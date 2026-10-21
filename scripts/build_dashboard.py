@@ -1,9 +1,9 @@
 """Build the static dashboard for one or more classified runs (negative conjunction, disjunction).
 
     python scripts/build_dashboard.py --and results --or results_disj --out site
-    python scripts/build_dashboard.py --and results_pilot --out site_pilot --all-matches
+    python scripts/build_dashboard.py --and results_pilot --out site_pilot
 
-Writes ``{out}/index.html`` plus, per dataset, ``data/{conn}/index.js`` (sentences, flags and
+Only flagged sentences are included. Writes ``{out}/index.html`` plus, per dataset, ``data/{conn}/index.js`` (sentences, flags and
 (not, connective) pairs: everything filtering and search need) and ``data/{conn}/trees-{title}.js``
 (trees, loaded when a sentence is opened). The files are plain scripts, so the site works from
 GitHub Pages and when opened from disk. Review marks are kept in the browser's localStorage and
@@ -75,12 +75,11 @@ def _manifest(results: Path) -> dict:
     return out
 
 
-def build_dataset(conn: str, results: Path, out: Path, only_flagged: bool) -> dict:
+def build_dataset(conn: str, results: Path, out: Path) -> dict:
     cls = pd.read_parquet(results / "sentences_classified.parquet")
     pairs = pd.read_parquet(results / "pairs.parquet")
     n_total = len(cls)
-    if only_flagged:
-        cls = cls[cls["flagged"]]
+    cls = cls[cls["flagged"]]
     pairs = pairs[pairs["sent_id"].isin(cls["sent_id"])]
     cc = f"{conn}_index"
     pcols = ["not_index", cc, "not_parent_label", "not_relaxed_parent_label",
@@ -100,7 +99,7 @@ def build_dataset(conn: str, results: Path, out: Path, only_flagged: bool) -> di
     d = out / "data" / conn
     d.mkdir(parents=True, exist_ok=True)
     meta = {"conn": conn, "label": LABELS[conn], "run": results.resolve().name,
-            "manifest": _manifest(results), "only_flagged": only_flagged, "n_total": n_total,
+            "manifest": _manifest(results), "n_total": n_total,
             "titles": sorted(trees, key=title_sort_key)}
     (d / "index.js").write_text(f"NEG.index({_js(conn)},{_js({**meta, 'rows': rows})});\n", encoding="utf-8")
     for title, tmap in trees.items():
@@ -112,9 +111,9 @@ def build_dataset(conn: str, results: Path, out: Path, only_flagged: bool) -> di
                                                                if k.startswith("trees")) / 1e6}
 
 
-def build(datasets: dict[str, Path], out: Path, only_flagged: bool) -> list[dict]:
+def build(datasets: dict[str, Path], out: Path) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
-    stats = [build_dataset(c, p, out, only_flagged) for c, p in datasets.items()]
+    stats = [build_dataset(c, p, out) for c, p in datasets.items()]
     html = (HERE / "dashboard_template.html").read_text(encoding="utf-8")
     html = html.replace("/*__DATASETS__*/[]", _js(list(datasets)))
     (out / "index.html").write_text(html, encoding="utf-8")
@@ -126,13 +125,11 @@ def main() -> None:
     ap.add_argument("--and", dest="and_", type=Path, help="results dir of the negative-conjunction run")
     ap.add_argument("--or", dest="or_", type=Path, help="results dir of the negative-disjunction run")
     ap.add_argument("--out", type=Path, default=Path("site"))
-    ap.add_argument("--all-matches", action="store_true",
-                    help="include unflagged matches too (default: flagged sentences, C2 strict)")
     a = ap.parse_args()
     datasets = {c: p for c, p in (("and", a.and_), ("or", a.or_)) if p is not None}
     if not datasets:
         ap.error("give --and and/or --or")
-    for s in build(datasets, a.out, not a.all_matches):
+    for s in build(datasets, a.out):
         print(s)
     print(f"wrote {a.out / 'index.html'}")
 
