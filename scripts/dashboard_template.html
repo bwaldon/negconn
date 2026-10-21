@@ -60,10 +60,6 @@ header.top h1 { margin: 0; font: 600 17px/1.2 var(--font-ui); letter-spacing: .0
 header.top h1 em { font-style: normal; color: var(--neg); }
 header.top h1 b { font-weight: 600; color: var(--conj); }
 .runmeta { color: var(--muted); font: 12px var(--font-mono); }
-.stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-left: auto; font-variant-numeric: tabular-nums; }
-.stat { display: flex; gap: 6px; align-items: baseline; }
-.stat .n { font: 600 15px var(--font-mono); }
-.stat .l { color: var(--muted); font-size: 12px; }
 
 main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; min-height: 0; }
 @media (max-width: 860px) { main { grid-template-columns: 1fr; } body { height: auto; } }
@@ -189,7 +185,6 @@ kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-
 <header class="top">
   <h1>Negated Connectives · <em>not</em> … <b>and</b> / <b>or</b></h1>
   <span class="runmeta" id="runmeta"></span>
-  <div class="stats" id="stats"></div>
 </header>
 <main>
   <aside>
@@ -350,19 +345,14 @@ function setup() {
   $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
   $("chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; st.coord = st.coord === b.dataset.c ? "" : b.dataset.c; refresh(); });
   for (const [id, k] of [["f-ds", "ds"], ["f-clause", "clause"], ["f-q", "q"], ["f-title", "title"], ["f-src", "src"], ["f-review", "review"]])
-    $(id).addEventListener("input", e => { st[k] = e.target.value; st.limit = 300; if (k === "ds") { st.coord = ""; drawHeader(); } refresh(); });
+    $(id).addEventListener("input", e => { st[k] = e.target.value; st.limit = 300; if (k === "ds") { st.coord = ""; drawChips(); } refresh(); });
   $("clear").addEventListener("click", () => { Object.assign(st, { clause: "", q: "", title: "", src: "", review: "", coord: "", limit: 300 }); $("f-clause").value = "";
     $("f-q").value = ""; $("f-title").value = ""; $("f-src").value = ""; $("f-review").value = ""; refresh(); });
-  drawHeader();
+  drawChips();
 }
 function inDs(r) { return !st.ds || r.ds === st.ds; }
-function drawHeader() {
-  const ms = DATASETS.map(c => META[c]).filter(d => d && (!st.ds || d.conn === st.ds));
+function drawChips() {
   const rows = ROWS.filter(inDs);
-  const nFlagged = rows.filter(r => r.flagged).length;
-  const stats = [[ms.reduce((a, d) => a + d.n_total, 0), "matched sentences"], [nFlagged, "flagged"]];
-  ms.forEach(d => { const p = d.manifest && d.manifest.partial; if (p) stats.push(["", `${d.conn}: partial run: ${p.split(";")[0]}`]); });
-  $("stats").innerHTML = stats.map(([n, l]) => `<span class="stat"><span class="n">${n === "" ? "" : n.toLocaleString()}</span><span class="l">${l}</span></span>`).join("");
   const cc = {}; rows.forEach(r => new Set(r.pairs.filter(p => p.strict).map(p => p.coord)).forEach(c => cc[c] = (cc[c] || 0) + 1));
   $("chips").innerHTML = `<span class="hint" style="width:100%">Coordination label</span>` +
     Object.entries(cc).sort((a, b) => b[1] - a[1]).map(([c, n]) => `<button type="button" class="chip" data-c="${esc(c)}" aria-pressed="false">${esc(c)}<span class="c">${n}</span></button>`).join("");
@@ -490,7 +480,7 @@ function renderDetail() {
   $("t-toggle").addEventListener("click", () => { st.expandAll = !st.expandAll; renderDetail(); });
   inner.querySelectorAll(".marks button").forEach(b => b.addEventListener("click", () => setMark(b.dataset.m)));
   $("r-note").addEventListener("input", e => { reviews[r.key] = { ...(reviews[r.key] || {}), note: e.target.value }; saveReviews(); });
-  if (twin) $("twin").addEventListener("click", () => { if (st.ds && st.ds !== twin.ds) { st.ds = ""; $("f-ds").value = ""; drawHeader(); refresh(); } select(twin.key); });
+  if (twin) $("twin").addEventListener("click", () => { if (st.ds && st.ds !== twin.ds) { st.ds = ""; $("f-ds").value = ""; drawChips(); refresh(); } select(twin.key); });
   $("export").addEventListener("click", exportCsv);
   if (nodes) (st.view === "focus" ? drawFocus : drawOutline)(r, p, nodes);
   else $("treebox").innerHTML = `<pre class="outline">${esc(r.tree)}</pre>`;
