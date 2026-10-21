@@ -334,8 +334,7 @@ function setup() {
   ROWS.forEach(r => byKey.set(r.key, r));
   const ms = DATASETS.map(c => META[c]).filter(Boolean);
   const m0 = (ms[0] || {}).manifest || {};
-  $("runmeta").textContent = [m0.release_point && "release " + m0.release_point,
-    ...ms.map(d => `${d.conn}: ${d.run}${d.manifest && d.manifest.git_commit ? " @" + String(d.manifest.git_commit).slice(0, 8) : ""}`)].filter(Boolean).join(" · ");
+  $("runmeta").textContent = m0.release_point ? "U.S. Code release " + m0.release_point : "";
   $("f-ds").innerHTML = (ms.length > 1 ? `<option value="">Both (and, or)</option>` : "") +
     ms.map(d => `<option value="${d.conn}">not … ${d.conn} · ${esc(d.label.toLowerCase())}</option>`).join("");
   st.ds = $("f-ds").value;
