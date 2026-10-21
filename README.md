@@ -1,4 +1,4 @@
-# negconj
+# negconn
 
 Negated connectives in the primary statutory text of the U.S. Code: negative conjunctions
 (`… not … and …`) and negative disjunctions (`… not … or …`). Every matching sentence is
@@ -6,7 +6,7 @@ constituency-parsed with Stanza, and the pipeline flags those where *not* is the
 dominates the coordination (criterion C2). The method adapts the negative-disjunction search in the
 Champollion et al. amicus brief in *Campos-Chaves v. Garland* (Nos. 22-674 & 22-884).
 
-**Dashboard:** <https://bwaldon.github.io/negconj/>. All 41,869 flagged sentences from both runs,
+**Dashboard:** <https://bwaldon.github.io/negconn/>. All 41,869 flagged sentences from both runs,
 with their trees. Pick a connective (*and*, *or*, or both) and search or filter by text, citation,
 title, unit type, coordination label and position (e.g. inside an *if*-clause, with *not* and the
 coordination both in it). Review marks can be saved in the browser and exported as CSV. The pages
@@ -14,6 +14,9 @@ load per-title tree files on demand, so the site also works opened from disk
 (`site/index.html` after building).
 
 ## Pipeline
+
+The Python package and the Modal app and Volume are still named `negconj` (and `negconj-data`).
+
 
 A run studies one connective (`--conn and|or`). Only the prefilter, the sentence regex and the CC
 word change between them; extraction, segmentation, parsing and C2 are shared code.

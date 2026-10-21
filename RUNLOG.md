@@ -313,3 +313,9 @@ Also a mis-coordination: 29/214(d).
 - Connective selector (both / and / or); rows interleaved by citation; a sentence in both sets links
   to its twin. Reviews are keyed `{conn}|{sent_id}`; marks saved by the earlier viewer
   (localStorage `negconj-review:results_full_partial`) are carried over as *and* reviews.
+
+## Repository move (2026-10-21)
+- The project moved to <https://github.com/bwaldon/negconn> (history and `gh-pages` copied as-is);
+  dashboard at <https://bwaldon.github.io/negconn/>. The old repository `bwaldon/negconj` now holds
+  only a notice (README on `main`, a one-page site on `gh-pages`) pointing to the new location.
+  The package, Modal app and Volume keep the `negconj` names.
