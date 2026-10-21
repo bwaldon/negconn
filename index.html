@@ -195,13 +195,8 @@ kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-
   <aside>
     <div class="filters">
       <label for="f-ds">Connective<select id="f-ds"></select></label>
-      <label for="f-q">Search text or citation<input id="f-q" type="search" placeholder="e.g. shall not apply, 3553"></label>
-      <label for="f-status">Status<select id="f-status">
-        <option value="flagged">Flagged</option>
-        <option value="unflagged">Not flagged</option>
-        <option value="all">All matches</option>
-      </select></label>
       <label for="f-title">Title<select id="f-title"><option value="">All titles</option></select></label>
+      <label class="wide" for="f-q">Search text or citation<input id="f-q" type="search" placeholder="e.g. shall not apply, 3553"></label>
       <label class="wide" for="f-clause">Where the pair sits<select id="f-clause">
         <option value="if">Inside an 'if'-clause ('not' and the coordination both in it)</option>
         <option value="">Anywhere in the sentence</option>
@@ -310,12 +305,8 @@ function ifClauseOf(row, pair) {
   }
   return null;
 }
-function pairCounts(p) {
-  if (st.status === "flagged") return p.strict;
-  return true;
-}
 function ifPairs(row) {
-  const out = []; row.pairs.forEach((p, i) => { if (p.inIf && pairCounts(p)) out.push(i); }); return out;
+  const out = []; row.pairs.forEach((p, i) => { if (p.inIf && p.strict) out.push(i); }); return out;
 }
 
 /* ---------- state ---------- */
@@ -333,7 +324,7 @@ try {
   }
 } catch (e) { reviews = {}; }
 function saveReviews() { try { localStorage.setItem(KEY, JSON.stringify(reviews)); } catch (e) { /* storage unavailable */ } }
-const st = { ds: "", clause: "if", q: "", status: "flagged", title: "", src: "", review: "", coord: "", limit: 300, sel: null, pair: 0, view: "focus", expandAll: false, open: new Set() };
+const st = { ds: "", clause: "if", q: "", title: "", src: "", review: "", coord: "", limit: 300, sel: null, pair: 0, view: "focus", expandAll: false, open: new Set() };
 const byKey = new Map();
 const findRow = k => byKey.get(k);
 
@@ -358,10 +349,10 @@ function setup() {
   const srcs = [...new Set(ROWS.map(r => r.src))].sort();
   $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
   $("chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; st.coord = st.coord === b.dataset.c ? "" : b.dataset.c; refresh(); });
-  for (const [id, k] of [["f-ds", "ds"], ["f-clause", "clause"], ["f-q", "q"], ["f-status", "status"], ["f-title", "title"], ["f-src", "src"], ["f-review", "review"]])
+  for (const [id, k] of [["f-ds", "ds"], ["f-clause", "clause"], ["f-q", "q"], ["f-title", "title"], ["f-src", "src"], ["f-review", "review"]])
     $(id).addEventListener("input", e => { st[k] = e.target.value; st.limit = 300; if (k === "ds") { st.coord = ""; drawHeader(); } refresh(); });
-  $("clear").addEventListener("click", () => { Object.assign(st, { clause: "", q: "", status: "flagged", title: "", src: "", review: "", coord: "", limit: 300 }); $("f-clause").value = "";
-    $("f-q").value = ""; $("f-status").value = "flagged"; $("f-title").value = ""; $("f-src").value = ""; $("f-review").value = ""; refresh(); });
+  $("clear").addEventListener("click", () => { Object.assign(st, { clause: "", q: "", title: "", src: "", review: "", coord: "", limit: 300 }); $("f-clause").value = "";
+    $("f-q").value = ""; $("f-title").value = ""; $("f-src").value = ""; $("f-review").value = ""; refresh(); });
   drawHeader();
 }
 function inDs(r) { return !st.ds || r.ds === st.ds; }
@@ -370,7 +361,6 @@ function drawHeader() {
   const rows = ROWS.filter(inDs);
   const nFlagged = rows.filter(r => r.flagged).length;
   const stats = [[ms.reduce((a, d) => a + d.n_total, 0), "matched sentences"], [nFlagged, "flagged"]];
-  if (ms.some(d => d.only_flagged)) stats.push(["", "files hold flagged sentences only"]);
   ms.forEach(d => { const p = d.manifest && d.manifest.partial; if (p) stats.push(["", `${d.conn}: partial run: ${p.split(";")[0]}`]); });
   $("stats").innerHTML = stats.map(([n, l]) => `<span class="stat"><span class="n">${n === "" ? "" : n.toLocaleString()}</span><span class="l">${l}</span></span>`).join("");
   const cc = {}; rows.forEach(r => new Set(r.pairs.filter(p => p.strict).map(p => p.coord)).forEach(c => cc[c] = (cc[c] || 0) + 1));
@@ -380,8 +370,6 @@ function drawHeader() {
 
 function matches(r) {
   if (!inDs(r)) return false;
-  if (st.status === "flagged" && !r.flagged) return false;
-  if (st.status === "unflagged" && r.flagged) return false;
   if (st.title && r.title !== st.title) return false;
   if (st.src && r.src !== st.src) return false;
   if (st.coord && !r.pairs.some(p => p.strict && p.coord === st.coord)) return false;
