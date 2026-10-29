@@ -36,7 +36,9 @@ frame_np        the frame phrase introduces an indefinite noun phrase (N1 exists
 if_outside      an if-clause comes after N1's determiner and lies outside the frame (H is not
                 dominated by the frame).
 repeated_np     the if-clause contains another indefinite noun phrase N2 ("a"/"an" as its det)
-                whose head has N1's lemma.
+                whose head has N1's lemma, and that is not itself introduced by one of the
+                phrases (a parallel "…, and in the case of an alien …" swallowed by an
+                over-long if-clause is a new frame, not a repetition inside the condition).
 different_mods  N1 and N2 both have modifiers, and their modifier texts differ.
 same_governor   H and the frame are dependents of the same governor: both modify the main
                 clause, as in the provision.
@@ -186,13 +188,13 @@ def _mod_text(t: DepTree, mods: list[int]) -> str:
     return t.text(sorted(i for m in mods for i in t.subtree(m))).lower()
 
 
-def _repeat(t: DepTree, n1: int, if_head: int) -> tuple[int, int]:
+def _repeat(t: DepTree, n1: int, if_head: int, framed: set[int]) -> tuple[int, int]:
     """Best N2 for N1 inside the if-clause: (n2, det2), preferring one with modifiers that
-    differ from N1's; (-1, -1) if there is none."""
+    differ from N1's; (-1, -1) if there is none. Determiners in ``framed`` follow a phrase."""
     lemma = t.words[n1].lemma.lower()
     found = [(n, t.indefinite_det(n)) for n in t.subtree(if_head)
              if n != n1 and t.words[n].upos in NOMINAL and t.words[n].lemma.lower() == lemma
-             and t.indefinite_det(n) >= 0]
+             and t.indefinite_det(n) >= 0 and t.indefinite_det(n) not in framed]
     if not found:
         return -1, -1
     m1 = _mod_text(t, t.modifiers(n1))
@@ -203,36 +205,36 @@ def _repeat(t: DepTree, n1: int, if_head: int) -> tuple[int, int]:
 def candidates(t: DepTree, phrases: dict[str, tuple[str, ...]]) -> list[Candidate]:
     """Every (frame phrase, if) candidate; ``phrases`` maps query id -> lowercased phrase words."""
     marks = [i for i in range(len(t)) if t.lower[i] == "if" and t.words[i].deprel == "mark"]
+    starts = [(qid, ph, i) for qid, ph in phrases.items() for i in range(len(t) - len(ph))
+              if tuple(t.lower[i:i + len(ph)]) == ph and t.lower[i + len(ph)] in INDEFINITE]
+    framed = {i + len(ph) for _, ph, i in starts}
     out = []
-    for qid, ph in phrases.items():
+    for qid, ph, i in starts:
         k = len(ph)
-        for i in range(len(t) - k):
-            if tuple(t.lower[i:i + k]) != ph or t.lower[i + k] not in INDEFINITE:
-                continue
-            base = dict(query=qid, phrase=(i, i + k - 1), det1=i + k)
-            n1 = t.det_of(i + k)
-            if n1 < 0 or t.words[n1].upos not in NOMINAL:
-                out.append(Candidate(**base))
-                continue
-            frame = t.lca(i, n1)
-            later = [m for m in marks if m > i + k] or [-1]
-            for m in later:
-                c = Candidate(**base, n1=n1, frame=frame, governor=t.head(frame), mark=m,
-                              mods1=t.modifiers(n1))
-                c.met["frame_np"] = True
-                if m >= 0:
-                    c.if_head = t.head(m)
-                    c.met["if_outside"] = c.if_head >= 0 and not t.dominates(frame, c.if_head)
-                    c.met["same_governor"] = (c.governor >= 0 and c.if_head not in (-1, frame)
-                                              and t.head(c.if_head) == c.governor)
-                    if c.if_head >= 0:
-                        c.n2, c.det2 = _repeat(t, n1, c.if_head)
-                    c.met["repeated_np"] = c.n2 >= 0
-                    if c.n2 >= 0:
-                        c.mods2 = t.modifiers(c.n2)
-                        c.met["different_mods"] = bool(c.mods1 and c.mods2) and (
-                            _mod_text(t, c.mods1) != _mod_text(t, c.mods2))
-                out.append(c)
+        base = dict(query=qid, phrase=(i, i + k - 1), det1=i + k)
+        n1 = t.det_of(i + k)
+        if n1 < 0 or t.words[n1].upos not in NOMINAL:
+            out.append(Candidate(**base))
+            continue
+        frame = t.lca(i, n1)
+        later = [m for m in marks if m > i + k] or [-1]
+        for m in later:
+            c = Candidate(**base, n1=n1, frame=frame, governor=t.head(frame), mark=m,
+                          mods1=t.modifiers(n1))
+            c.met["frame_np"] = True
+            if m >= 0:
+                c.if_head = t.head(m)
+                c.met["if_outside"] = c.if_head >= 0 and not t.dominates(frame, c.if_head)
+                c.met["same_governor"] = (c.governor >= 0 and c.if_head not in (-1, frame)
+                                          and t.head(c.if_head) == c.governor)
+                if c.if_head >= 0:
+                    c.n2, c.det2 = _repeat(t, n1, c.if_head, framed)
+                c.met["repeated_np"] = c.n2 >= 0
+                if c.n2 >= 0:
+                    c.mods2 = t.modifiers(c.n2)
+                    c.met["different_mods"] = bool(c.mods1 and c.mods2) and (
+                        _mod_text(t, c.mods1) != _mod_text(t, c.mods2))
+            out.append(c)
     return out
 
 

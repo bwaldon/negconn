@@ -168,6 +168,19 @@ def test_same_modifier_words_attached_differently():
     assert summary(conllu(other))["strict"]
 
 
+def test_parallel_frame_is_not_a_repeat():
+    """'… if in the case of a qualified plan …': the second plan is a new frame's N1."""
+    rows = [("In", "in", "ADP", 3, "case"), ("the", "the", "DET", 3, "det"), ("case", "case", "NOUN", 22, "obl"),
+            ("of", "of", "ADP", 7, "case"), ("a", "a", "DET", 7, "det"), ("covered", "cover", "VERB", 7, "amod"),
+            ("plan", "plan", "NOUN", 3, "nmod"), (",", ",", "PUNCT", 3, "punct"), ("if", "if", "SCONJ", 17, "mark"),
+            ("in", "in", "ADP", 12, "case"), ("the", "the", "DET", 12, "det"), ("case", "case", "NOUN", 17, "obl"),
+            ("of", "of", "ADP", 16, "case"), ("a", "a", "DET", 16, "det"), ("qualified", "qualified", "ADJ", 16, "amod"),
+            ("plan", "plan", "NOUN", 12, "nmod"), ("fails", "fail", "VERB", 22, "advcl"), (",", ",", "PUNCT", 17, "punct"),
+            ("the", "the", "DET", 20, "det"), ("sponsor", "sponsor", "NOUN", 22, "nsubj"), ("shall", "shall", "AUX", 22, "aux"),
+            ("pay", "pay", "VERB", 0, "root"), (".", ".", "PUNCT", 22, "punct")]
+    assert met(conllu(rows)) == {"frame_np", "if_outside", "same_governor"}
+
+
 def test_fixed_expression_frame():
     """'With respect to' parsed as a fixed expression: the frame is N1 itself."""
     rows = [("With", "with", "ADP", 5, "case"), ("respect", "respect", "NOUN", 1, "fixed"),
