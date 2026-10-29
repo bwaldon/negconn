@@ -106,14 +106,15 @@ details.conllu tr.r-if td:nth-child(2) { color: var(--accent); font-weight: 600;
 const DATASETS = /*__DATASETS__*/[];
 let META = null, ROWS = [];
 const PARSES = {};
-const COND = ["frame_np", "if_outside", "same_governor", "repeated_np", "different_mods"];
+// Conditions in order (META.conditions); the first META.n_required make a match, the last makes it strict.
 const DEP = {
   index(d) {
     META = d;
     ROWS = d.rows.map((r, n) => ({ n, key: r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3], words: r[4].split(" "),
-      queries: r[5], matches: r[6], nMet: r[7], best: r[8], conllu: null,
-      cands: r[9].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
-        n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], met: COND.map((_, k) => !!(c[13] & (1 << k))) })) }));
+      queries: r[5], matches: r[6], strict: r[7], nMet: r[8], best: r[9], conllu: null,
+      cands: r[10].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
+        n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], met: d.conditions.map((_, k) => !!(c[13] & (1 << k))) })) }));
+    ROWS.forEach(r => { const c = r.cands[r.best]; r.near = !r.matches && !!c && c.met.slice(0, d.n_required).filter(Boolean).length === d.n_required - 1; });
   },
   parses(title, map) { PARSES[title] = map; },
 };
@@ -155,9 +156,10 @@ function setup() {
   ROWS.forEach(r => byKey.set(r.key, r));
   const m = META.manifest || {};
   $("runmeta").textContent = m.release_point ? "U.S. Code release " + m.release_point : "";
-  const nMatch = ROWS.filter(r => r.matches).length, nNear = ROWS.filter(r => !r.matches && r.nMet === 4).length;
-  $("f-dq").innerHTML = `<option value="match">Matches: all five conditions (${nMatch.toLocaleString()})</option>
-    <option value="near">Near misses: four of five (${nNear.toLocaleString()})</option>
+  const count = f => ROWS.filter(f).length.toLocaleString();
+  $("f-dq").innerHTML = `<option value="match">Matches: both properties (${count(r => r.matches)})</option>
+    <option value="strict">Strict matches: phrase and if-clause modify the same head (${count(r => r.strict)})</option>
+    <option value="near">Near misses: 3 of the 4 conditions of a match (${count(r => r.near)})</option>
     <option value="">Every sentence a linear query found (${ROWS.length.toLocaleString()})</option>`;
   $("f-miss").innerHTML = `<option value="">Any</option>` + META.conditions.map(([k, t], i) => `<option value="${i}">${esc(t)}</option>`).join("");
   $("f-lq").innerHTML = `<option value="">Any of the nine</option>` + META.queries.map((q, i) => {
@@ -172,7 +174,7 @@ function setup() {
   $("clear").addEventListener("click", () => clearFilters(""));
   $("go-prov").addEventListener("click", () => {
     const r = ROWS.find(x => x.ident === META.provision); if (!r) return;
-    if (!matches(r)) clearFilters(r.matches ? "match" : "");
+    if (!matches(r)) clearFilters(r.matches ? "match" : "");  // the provision is a strict match
     select(r.key);
   });
 }
@@ -184,8 +186,9 @@ function clearFilters(dq) {
 
 function matches(r) {
   if (st.dq === "match" && !r.matches) return false;
-  if (st.dq === "near" && (r.matches || r.nMet !== 4)) return false;
-  if (st.miss !== "" && (r.matches || !r.cands.length || bestCand(r).met[+st.miss])) return false;
+  if (st.dq === "strict" && !r.strict) return false;
+  if (st.dq === "near" && !r.near) return false;
+  if (st.miss !== "" && (!r.cands.length || bestCand(r).met[+st.miss])) return false;
   if (st.lq !== "" && !r.queries.includes(+st.lq)) return false;
   if (st.title && r.title !== st.title) return false;
   if (st.src && r.src !== st.src) return false;
@@ -208,11 +211,11 @@ function snippet(r) {
   return merged.map(([a, b]) => r.words.slice(a, b).map((w, k) => { const c2 = role(a + k); return c2 ? `<span style="color:var(--${c2});font-weight:600">${esc(w)}</span>` : esc(w); }).join(" "))
     .join(` <span class="gap">…</span> `);
 }
-function bitsHtml(c) { return `<span class="bits" title="conditions met, in order">${c.met.map(x => `<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
+function bitsHtml(c) { return `<span class="bits" title="conditions met, in order; the last is the strict one">${c.met.map((x, i) => `${i === META.n_required ? " " : ""}<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
 
 let filtered = [];
 function refresh() {
-  $("f-miss").disabled = st.dq === "match";
+  $("f-miss").disabled = st.dq === "strict";
   filtered = ROWS.filter(matches);
   $("count").textContent = `${filtered.length.toLocaleString()} sentence${filtered.length === 1 ? "" : "s"}`;
   const shown = filtered.slice(0, st.limit);
@@ -253,30 +256,35 @@ function roles(P, c) {
   return { cls, ifSpan: c.ifHead >= 0 ? span(P, c.ifHead) : null };
 }
 const q = s => `<q>${esc(s)}</q>`;
+// Why each condition holds or fails for candidate c, keyed by condition.
 function condText(r, P, c) {
+  const met = Object.fromEntries(META.conditions.map(([k], i) => [k, c.met[i]]));
   const w = i => i >= 0 ? P.ws[i].form : "";
   const phrase = r.words.slice(c.p0, c.det1 + 1).join(" ");
   const yieldOf = i => { const s = span(P, i); return r.words.slice(s[0], s[1] + 1).join(" "); };
   const modsText = ms => ms.length ? ms.map(([a, b]) => q(r.words.slice(a, b + 1).join(" "))).join(", ") : "none";
+  const unchecked = c.n1 < 0 || c.mark < 0 ? "Not checked." : null;
   const ifq = c.ifHead >= 0 ? q(yieldOf(c.ifHead).slice(0, 140) + (yieldOf(c.ifHead).length > 140 ? "…" : "")) : "";
-  return [
-    c.met[0] ? `${q(phrase)} is the determiner of ${q(w(c.n1))} (N1, ${P.ws[c.n1].upos}).`
+  return {
+    frame_np: met.frame_np ? `${q(phrase)} is the determiner of ${q(w(c.n1))} (N1, ${P.ws[c.n1].upos}).`
       : `${q(phrase)}: the ${q(w(c.det1))} is not the determiner of a noun in this parse${P.ws[c.det1] && P.ws[c.det1].head >= 0 ? ` (it is ${P.ws[c.det1].rel} of ${q(w(P.ws[c.det1].head))})` : ""}.`,
-    c.mark < 0 ? `No "if" attached as mark after N1.`
-      : c.met[1] ? `${q("if")} marks ${q(w(c.ifHead))}: ${ifq}, which is outside the phrase.`
+    if_outside: c.mark < 0 ? `No "if" attached as mark after N1.`
+      : met.if_outside ? `${q("if")} marks ${q(w(c.ifHead))}: ${ifq}, which is outside the phrase.`
       : `${q("if")} marks ${q(w(c.ifHead))}, which sits inside the phrase headed by ${q(w(c.frame))}.`,
-    c.n1 < 0 || c.mark < 0 ? "Not checked." : c.met[2] ? `The phrase (${q(w(c.frame))}, ${P.ws[c.frame].rel}) and the if-clause (${q(w(c.ifHead))}, ${P.ws[c.ifHead].rel}) both modify ${q(w(c.gov))}.`
-      : `The phrase (${q(w(c.frame))}) modifies ${c.gov >= 0 ? q(w(c.gov)) : "nothing (it is the root)"}; the if-clause (${q(w(c.ifHead))}) modifies ${P.ws[c.ifHead].head >= 0 ? q(w(P.ws[c.ifHead].head)) : "nothing (it is the root)"}.`,
-    c.n1 < 0 || c.mark < 0 ? "Not checked." : c.met[3] ? `${q(w(c.det2) + " " + w(c.n2))} (N2) in the if-clause has N1's lemma ${q(P.ws[c.n1].lemma)}.`
-      : `No ${q("a")}/${q("an")} + ${q(P.ws[c.n1].lemma)} in the if-clause.`,
-    c.n2 < 0 ? "Not checked." : `N1 modifiers: ${modsText(c.mods1)}. N2 modifiers: ${modsText(c.mods2)}.` + (c.met[4] ? "" : c.mods1.length && c.mods2.length ? " The same." : " One of them has none."),
-  ];
+    same_governor: unchecked || (met.same_governor ? `The phrase (${q(w(c.frame))}, ${P.ws[c.frame].rel}) and the if-clause (${q(w(c.ifHead))}, ${P.ws[c.ifHead].rel}) both modify ${q(w(c.gov))}.`
+      : `The phrase (${q(w(c.frame))}) modifies ${c.gov >= 0 ? q(w(c.gov)) : "nothing (it is the root)"}; the if-clause (${q(w(c.ifHead))}) modifies ${P.ws[c.ifHead].head >= 0 ? q(w(P.ws[c.ifHead].head)) : "nothing (it is the root)"}.`),
+    repeated_np: unchecked || (met.repeated_np ? `${q(w(c.det2) + " " + w(c.n2))} (N2) in the if-clause has N1's lemma ${q(P.ws[c.n1].lemma)}.`
+      : `No ${q("a")}/${q("an")} + ${q(P.ws[c.n1].lemma)} in the if-clause.`),
+    different_mods: c.n2 < 0 ? "Not checked." : `N1 modifiers: ${modsText(c.mods1)}. N2 modifiers: ${modsText(c.mods2)}.` + (met.different_mods ? "" : c.mods1.length && c.mods2.length ? " The same words." : " One of them has none."),
+  };
 }
 function renderDetail() {
   const r = findRow(st.sel); if (!r) return;
   const P = parseConllu(r.conllu), c = r.cands[st.cand];
   const { cls, ifSpan } = roles(P, c);
-  const pill = r.matches ? `<span class="pill match">Matches</span>` : r.nMet === 4 ? `<span class="pill near">Near miss · 4 of 5</span>` : `<span class="pill none">${r.nMet} of 5</span>`;
+  const req = META.n_required, nReq = c ? c.met.slice(0, req).filter(Boolean).length : 0;
+  const pill = r.strict ? `<span class="pill match">Strict match</span>` : r.matches ? `<span class="pill match">Match</span>`
+    : r.near ? `<span class="pill near">Near miss · ${nReq} of ${req}</span>` : `<span class="pill none">${nReq} of ${req}</span>`;
   const lii = liiUrl(r.ident);
   const has = (i, k) => cls[i].has(k);
   const textHtml = r.words.map((w, i) => {
@@ -290,14 +298,14 @@ function renderDetail() {
     const sc = ["m1", "m2", "frame"].filter(x => has(i, x) && has(i + 1, x)).map(x => "t-" + x);
     return tok + (sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
   }).join("");
-  const conds = c ? condText(r, P, c) : [];
+  const conds = c ? condText(r, P, c) : {};
   const candRows = r.cands.map((x, i) => {
     const ctx = (a, b, hi, col) => r.words.slice(Math.max(0, a), Math.min(r.words.length, b)).map((w, k) => hi.includes(Math.max(0, a) + k) ? `<span style="color:var(--${col});font-weight:600">${esc(w)}</span>` : esc(w)).join(" ");
     return `<tr data-i="${i}" aria-selected="${i === st.cand}">
       <td class="ctx">${ctx(x.p0, x.det1 + 3, [x.det1, x.n1], "conj")}</td>
       <td class="ctx">${x.mark >= 0 ? ctx(x.mark, x.mark + 4, [x.mark], "accent") + ` <span class="hint">word ${x.mark + 1}</span>` : `<span class="no">none</span>`}</td>
       <td class="ctx">${x.n2 >= 0 ? ctx(x.det2 - 1, x.n2 + 3, [x.det2, x.n2], "neg") : `<span class="no">none</span>`}</td>
-      <td>${bitsHtml(x)} ${x.met.filter(Boolean).length}/5</td></tr>`;
+      <td>${bitsHtml(x)} ${x.met.slice(0, req).filter(Boolean).length}/${req}${x.met[req] ? " + strict" : ""}</td></tr>`;
   }).join("");
   const rv = reviews[r.key] || {};
   const qs = r.queries.map(i => esc(phraseLabel(i))).join("; ");
@@ -309,7 +317,7 @@ function renderDetail() {
     <div class="legend"><span class="l-frame">phrase + a/an</span><span class="l-n1">N1</span><span class="l-m1">N1's modifiers</span><span class="l-if">if-clause</span><span class="l-n2">N2</span><span class="l-m2">N2's modifiers</span><span class="l-gov">head both modify</span></div>
     <div class="text">${textHtml}</div>
     ${c ? `<div><h3>Conditions${r.cands.length > 1 ? (st.cand === r.best ? " · best candidate" : ` · candidate ${st.cand + 1}`) : ""}</h3><ol class="conds">${META.conditions.map(([k, t], i) =>
-      `<li><span class="${c.met[i] ? "ok" : "ko"}" aria-label="${c.met[i] ? "met" : "not met"}">${c.met[i] ? "✓" : "✗"}</span><span class="what">${esc(t)}</span><span class="why">${conds[i]}</span></li>`).join("")}</ol></div>` : `<p class="hint">No candidate: none of the phrases is followed by "a"/"an" in the parse's words.</p>`}
+      `<li><span class="${c.met[i] ? "ok" : "ko"}" aria-label="${c.met[i] ? "met" : "not met"}">${c.met[i] ? "✓" : "✗"}</span><span class="what">${esc(t)}</span><span class="why">${conds[k]}</span></li>`).join("")}</ol></div>` : `<p class="hint">No candidate: none of the phrases is followed by "a"/"an" in the parse's words.</p>`}
     ${r.cands.length > 1 ? `<div><h3>Candidates · click one to show it</h3><div class="tablewrap"><table>
       <thead><tr><th>phrase + N1</th><th>if</th><th>N2</th><th>conditions</th></tr></thead><tbody>${candRows}</tbody></table></div></div>` : ""}
     <div>

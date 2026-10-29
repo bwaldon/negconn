@@ -14,8 +14,8 @@ Which other U.S. Code provisions share this structure?
 
 **Dashboard:** <https://bwaldon.github.io/negconn/1225b/>. Every sentence the RA's linear queries
 find, with its dependency parse. By default the list shows the sentences the dependency query
-matches; it can also show near misses (four of five conditions) or everything, filtered by the
-condition not met, the RA's query, title, unit type or text. Review marks are saved in the
+matches; it can also show only strict matches, near misses (three of the four conditions of a
+match) or everything, filtered by the condition not met, the RA's query, title, unit type or text. Review marks are saved in the
 browser and can be exported as CSV.
 
 ## Method
@@ -52,11 +52,14 @@ For each candidate pair (one occurrence of a query phrase + *a*/*an*, one *if*),
 |---|---|
 | `frame_np` | the *a*/*an* after the phrase is the `det` of a noun N1: an indefinite noun phrase |
 | `if_outside` | an *if* attached as `mark` comes after it, and its clause is outside the phrase (not dominated by the phrase's head, e.g. *case*) |
-| `same_governor` | the phrase and the *if*-clause are dependents of the same word: both modify the main clause |
 | `repeated_np` | the *if*-clause contains another noun with N1's lemma whose `det` is *a*/*an* (N2) |
-| `different_mods` | N1 and N2 both have modifiers (`amod`, `acl`, `acl:relcl`, `nmod`, `compound`), and the modifier texts differ |
+| `different_mods` | N1 and N2 both have modifiers (`amod`, `acl`, `acl:relcl`, `nmod`, `compound`), and the words of N2's modifiers, in sentence order, differ from N1's |
+| `same_governor` | the phrase and the *if*-clause are dependents of the same word: both modify the main clause |
 
-A sentence **matches** when one candidate meets all five. The phrase's head is the lowest word
+The first four are the two properties above: a sentence **matches** when one candidate meets
+them, and is a **strict match** when that candidate also meets `same_governor`, the provision's
+own shape (*case* and *determines* both depend on *detained*). A match that is not strict has its
+*if*-clause attached elsewhere, either by a parse error or because it conditions another clause. The phrase's head is the lowest word
 dominating both the phrase's first word and N1, so *with respect to an employee* parsed as a fixed
 expression (the phrase's words hanging off *employee*) is handled like *in the case of an alien*.
 8 U.S.C. § 1225(b)(2)(A) itself is the regression case (`tests/test_1225b.py`).

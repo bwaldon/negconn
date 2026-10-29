@@ -19,7 +19,7 @@ import pandas as pd
 from negconj.dashboard import manifest_meta, render_page, write_call
 from negconj.util import title_sort_key
 
-from .depquery import CONDITIONS, read_conllu
+from .depquery import CONDITIONS, REQUIRED, read_conllu
 from .study import PROVISION, QUERIES, CONDITION_TEXT
 
 HERE = Path(__file__).resolve().parent
@@ -48,20 +48,20 @@ def build(results: Path, out: Path) -> dict:
                _spans(c.mods1), _spans(c.mods2), _bits(c._asdict())]
               for c in by_sent[r.sent_id].itertuples(index=False)] if r.sent_id in by_sent else []
         rows.append([r.sent_id, str(r.title), r.identifier, r.elem_source, " ".join(words),
-                     [QUERY_INDEX[q] for q in r.queries], bool(r.matches), int(r.best_n_met),
-                     int(r.best), cs])
+                     [QUERY_INDEX[q] for q in r.queries], bool(r.matches), bool(r.strict),
+                     int(r.best_n_met), int(r.best), cs])
         parses.setdefault(str(r.title), {})[r.sent_id] = r.conllu
     d = out / "data"
     meta = {"run": results.resolve().name, "manifest": manifest_meta(results), "provision": PROVISION,
             "queries": [[qid, q, phrase] for qid, q, phrase in QUERIES],
-            "conditions": [[k, CONDITION_TEXT[k]] for k in CONDITIONS],
+            "conditions": [[k, CONDITION_TEXT[k]] for k in CONDITIONS], "n_required": len(REQUIRED),
             "n_failures": len(fails), "titles": sorted(parses, key=title_sort_key)}
     write_call(d / "index.js", "DEP.index", {**meta, "rows": rows})
     for title, pmap in parses.items():
         write_call(d / f"parses-{title}.js", "DEP.parses", title, pmap)
     render_page(HERE / "dashboard_template.html", out / "index.html", ["1225b"])
     sizes = {p.name: p.stat().st_size for p in d.iterdir()}
-    return {"rows": len(rows), "matches": int(cls["matches"].sum()),
+    return {"rows": len(rows), "matches": int(cls["matches"].sum()), "strict": int(cls["strict"].sum()),
             "index_mb": sizes["index.js"] / 1e6,
             "parses_mb": sum(v for k, v in sizes.items() if k.startswith("parses")) / 1e6}
 
