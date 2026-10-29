@@ -29,9 +29,6 @@ def pair_columns(conn: str = "and") -> list[str]:
             "n_conjuncts", "tree_distance", "c2_strict", "c2_relaxed"]
 
 
-PAIR_COLUMNS = pair_columns("and")
-
-
 def to_tree(s: str) -> ParentedTree:
     return ParentedTree.fromstring(s)
 
@@ -51,10 +48,6 @@ def not_nodes(tree: ParentedTree) -> list[ParentedTree]:
 
 def conn_ccs(tree: ParentedTree, conn: str = "and") -> list[ParentedTree]:
     return [p for p in preterminals(tree) if p.label() == "CC" and p[0].lower() == conn]
-
-
-def and_ccs(tree: ParentedTree) -> list[ParentedTree]:
-    return conn_ccs(tree, "and")
 
 
 def dominates(a, b) -> bool:

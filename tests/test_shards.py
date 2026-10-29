@@ -1,6 +1,7 @@
 import pandas as pd
 import pytest
 
+from negconj.connectives import AND, OR
 from negconj.shards import merge_shards, plan_shards, prefilter, read_done, run_shard
 
 from test_segment import split_tokenizer
@@ -9,6 +10,7 @@ from test_segment import split_tokenizer
 class FakeParser:
     stanza_version = "fake"
     model_package = "fake"
+    columns = ("tree", "xpos")
 
     def __init__(self):
         self.calls = 0
@@ -44,13 +46,13 @@ def make_units(n_sections=12):
 
 
 def test_prefilter_and_section_keys():
-    pre = prefilter(make_units())
+    pre = prefilter(make_units(), AND.unit_patterns)
     assert "nomatch_1" not in set(pre["unit_id"])
     assert "99/_nosection" in set(pre["section_key"])
 
 
 def test_plan_deterministic_and_complete():
-    pre = prefilter(make_units())
+    pre = prefilter(make_units(), AND.unit_patterns)
     p1 = plan_shards({"99": pre}, target_chars=600)
     p2 = plan_shards({"99": pre.copy()}, target_chars=600)
     assert p1 == p2 and len(p1) > 1
@@ -61,14 +63,14 @@ def test_plan_deterministic_and_complete():
 def _run_all(root, plan, pre, crash=None):
     parser = FakeParser()
     for sid, secs in plan.items():
-        run_shard(sid, secs, pre, root, split_tokenizer, parser, min_matches=4, seg_chunk=3,
-                  hook=crash or (lambda stage, k: None))
+        run_shard(sid, secs, pre, root, split_tokenizer, parser, pattern=AND.sentence_pattern,
+                  min_matches=4, seg_chunk=3, hook=crash or (lambda stage, k: None))
     return merge_shards(root, plan, pre)
 
 
 @pytest.mark.parametrize("crash_stage,crash_k", [("part", 1), ("done", 2), ("part", 0)])
 def test_checkpoint_resume_equals_uninterrupted(tmp_path, crash_stage, crash_k):
-    pre = prefilter(make_units())
+    pre = prefilter(make_units(), AND.unit_patterns)
     plan = {"99-000": list(dict.fromkeys(pre["section_key"]))}
 
     ref_root = tmp_path / "ref"
@@ -85,7 +87,7 @@ def test_checkpoint_resume_equals_uninterrupted(tmp_path, crash_stage, crash_k):
 
     with pytest.raises(RuntimeError, match="preempted"):
         run_shard("99-000", plan["99-000"], pre, root, split_tokenizer, FakeParser(),
-                  min_matches=4, seg_chunk=3, hook=crash)
+                  pattern=AND.sentence_pattern, min_matches=4, seg_chunk=3, hook=crash)
     n_done = len(read_done(root, "99-000"))
     assert 0 <= n_done < len(plan["99-000"])
     counts = _run_all(root, plan, pre)
@@ -101,7 +103,7 @@ def test_checkpoint_resume_equals_uninterrupted(tmp_path, crash_stage, crash_k):
 
 
 def test_merge_detects_unfinished_shard(tmp_path):
-    pre = prefilter(make_units())
+    pre = prefilter(make_units(), AND.unit_patterns)
     plan = {"99-000": list(dict.fromkeys(pre["section_key"]))}
     with pytest.raises(AssertionError, match="not done"):
         merge_shards(tmp_path, plan, pre)
@@ -110,11 +112,11 @@ def test_merge_detects_unfinished_shard(tmp_path):
 def test_prefilter_or():
     units = make_units()
     units.loc[0, "text_parse"] = "This shall not apply to a or b."
-    assert {"id0x0_1"} == set(prefilter(units, "or")["unit_id"])
+    assert {"id0x0_1"} == set(prefilter(units, OR.unit_patterns)["unit_id"])
 
 
 def test_long_sentences_recorded_as_failures_not_parsed(tmp_path):
-    pre = prefilter(make_units())
+    pre = prefilter(make_units(), AND.unit_patterns)
     plan = {"99-000": list(dict.fromkeys(pre["section_key"]))}
     root = tmp_path / "cap"
     parser = FakeParser()
@@ -122,7 +124,7 @@ def test_long_sentences_recorded_as_failures_not_parsed(tmp_path):
     orig = parser.parse
     parser.parse = lambda tl: (seen.extend(len(t) for t in tl), orig(tl))[1]
     c = run_shard("99-000", plan["99-000"], pre, root, split_tokenizer, parser,
-                  min_matches=4, seg_chunk=3, max_tokens=9)
+                  pattern=AND.sentence_pattern, min_matches=4, seg_chunk=3, max_tokens=9)
     assert c["too_long"] > 0 and max(seen) <= 9
     m = merge_shards(root, plan, pre)
     fails = pd.read_parquet(root / "results" / "failures.parquet")
@@ -131,7 +133,7 @@ def test_long_sentences_recorded_as_failures_not_parsed(tmp_path):
 
 
 def test_reuse_requires_identical_tokens_and_model(tmp_path):
-    pre = prefilter(make_units())
+    pre = prefilter(make_units(), AND.unit_patterns)
     plan = {"99-000": list(dict.fromkeys(pre["section_key"]))}
     ref = tmp_path / "ref"
     _run_all(ref, plan, pre)
@@ -142,7 +144,7 @@ def test_reuse_requires_identical_tokens_and_model(tmp_path):
     root = tmp_path / "reuse"
     parser = FakeParser()
     counts = run_shard("99-000", plan["99-000"], pre, root, split_tokenizer, parser,
-                       min_matches=4, seg_chunk=3, reuse=prior)
+                       pattern=AND.sentence_pattern, min_matches=4, seg_chunk=3, reuse=prior)
     assert counts["reused"] == len(prior) - 1
     merge_shards(root, plan, pre)
     got = pd.read_parquet(root / "results" / "parses.parquet").set_index("sent_id")
@@ -152,4 +154,4 @@ def test_reuse_requires_identical_tokens_and_model(tmp_path):
     other.model_package = "other"
     root2 = tmp_path / "other_model"
     assert run_shard("99-000", plan["99-000"], pre, root2, split_tokenizer, other,
-                     min_matches=4, seg_chunk=3, reuse=prior)["reused"] == 0
+                     pattern=AND.sentence_pattern, min_matches=4, seg_chunk=3, reuse=prior)["reused"] == 0

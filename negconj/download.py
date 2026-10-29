@@ -6,7 +6,6 @@ and reports, rather than switching to a mirror.
 
 from __future__ import annotations
 
-import hashlib
 import re
 import urllib.request
 import zipfile
@@ -14,7 +13,6 @@ from pathlib import Path
 
 BASE = "https://uscode.house.gov/download/"
 DOWNLOAD_PAGE = "https://uscode.house.gov/download.html"  # moved from /download/download.html
-DEFAULT_RELEASE = "119-121"
 _ALL_RE = re.compile(r"releasepoints/us/pl/(\d+)/(\d+[a-z]*)/xml_uscAll@(\d+-\d+[a-z]*)\.zip")
 USER_AGENT = "negconj-research/0.1 (statutory corpus study)"
 
@@ -35,14 +33,6 @@ def current_release_point() -> str | None:
 def zip_url(release: str, title: str = "All") -> str:
     congress, law = release.split("-", 1)
     return f"{BASE}releasepoints/us/pl/{congress}/{law}/xml_usc{title}@{release}.zip"
-
-
-def sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def fetch(url: str, dest: Path) -> Path:

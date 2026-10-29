@@ -15,33 +15,30 @@ A section counts as done only once the batch's part and seg files are
 written; a shard restarted after preemption skips done sections and appends
 new part files, so a batch can appear twice and merge drops the duplicates.
 
-A run is for one connective (``conn``): "and" (negative conjunction) or "or"
-(negative disjunction). The prefilter and the sentence regex use it; parsing
-does not depend on it, so a run may reuse trees from another run's merged
-parses for sentences whose tokens and model package are identical.
+A run is for one study (negconj.study): its unit patterns drive the prefilter
+and its sentence regex picks the sentences to parse. Parsing does not depend on
+the regex, so a run may reuse parses from another run's merged parses for
+sentences whose tokens and model package are identical. The parser decides its
+output columns (``parser.columns``: tree and xpos, or conllu).
 """
 
 from __future__ import annotations
 
-import json
-import os
 import re
 import time
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Sequence
 
 import pandas as pd
 
 from .segment import segment_units
+from .util import (append_jsonl, atomic_write_bytes, atomic_write_parquet, read_jsonl,
+                   title_sort_key)
 
-NOT_RE = re.compile(r"\bnot\b")
-AND_RE = re.compile(r"\band\b")
-OR_RE = re.compile(r"\bor\b")
-CONN_RES = {"and": AND_RE, "or": OR_RE}
 TOO_LONG = "too_long"  # error prefix for matches over max_tokens (never parsed)
 
-PARSE_COLUMNS = ["sent_id", "unit_id", "section", "title", "text", "tokens",
-                 "xpos", "n_tokens", "tree", "stanza_version", "model_package"]
+SENT_KEYS = ["sent_id", "unit_id", "section", "title", "text", "tokens", "n_tokens"]
+VERSION_COLUMNS = ["stanza_version", "model_package"]
 SEG_COLUMNS = ["sent_id", "unit_id", "section", "title", "n_tokens", "n_merged", "matched"]
 
 
@@ -53,19 +50,19 @@ def section_key(section, title: str) -> str:
     return section if isinstance(section, str) and section else f"{title}/_nosection"
 
 
-def prefilter(units: pd.DataFrame, conn: str = "and") -> pd.DataFrame:
-    """Units whose lowercased text_parse contains both 'not' and the
-    connective as words; adds ``section_key``."""
+def parse_columns(parser_columns: Sequence[str]) -> list[str]:
+    return SENT_KEYS + list(parser_columns) + VERSION_COLUMNS
+
+
+def prefilter(units: pd.DataFrame, patterns: Sequence[re.Pattern]) -> pd.DataFrame:
+    """Units whose lowercased text_parse matches every pattern; adds ``section_key``."""
     low = units["text_parse"].str.lower()
-    keep = low.str.contains(NOT_RE) & low.str.contains(CONN_RES[conn])
+    keep = pd.Series(True, index=units.index)
+    for pat in patterns:
+        keep &= low.str.contains(pat)
     out = units[keep].copy()
     out["section_key"] = [section_key(s, t) for s, t in zip(out["section"], out["title"])]
     return out
-
-
-def title_sort_key(title: str) -> tuple[int, str]:
-    m = re.match(r"(\d+)(.*)", title)
-    return (int(m.group(1)), m.group(2)) if m else (10**6, title)
 
 
 def plan_shards(prefiltered: dict[str, pd.DataFrame], target_chars: int) -> dict[str, list[str]]:
@@ -95,25 +92,8 @@ def shard_title(shard_id: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# Atomic file helpers
+# Progress files
 # --------------------------------------------------------------------------
-
-def atomic_write_bytes(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    with open(tmp, "wb") as fh:
-        fh.write(data)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
-
-
-def atomic_write_parquet(df: pd.DataFrame, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
-    df.to_parquet(tmp, index=False)
-    os.replace(tmp, path)
-
 
 def read_done(root: Path, shard_id: str) -> list[str]:
     p = root / "progress" / f"{shard_id}.done"
@@ -125,15 +105,6 @@ def read_done(root: Path, shard_id: str) -> list[str]:
 def write_done(root: Path, shard_id: str, keys: list[str]) -> None:
     atomic_write_bytes(root / "progress" / f"{shard_id}.done",
                        ("".join(k + "\n" for k in keys)).encode("utf-8"))
-
-
-def append_jsonl(path: Path, records: list[dict]) -> None:
-    prev = path.read_bytes() if path.exists() else b""
-    atomic_write_bytes(path, prev + "".join(json.dumps(r) + "\n" for r in records).encode())
-
-
-def read_jsonl(path: Path) -> list[dict]:
-    return [json.loads(l) for l in path.read_text().splitlines() if l] if path.exists() else []
 
 
 def _next_part(shard_dir: Path) -> int:
@@ -164,19 +135,21 @@ def _batches(sections: list[str], sents_by_section: Callable[[str], pd.DataFrame
 
 
 def run_shard(shard_id: str, sections: list[str], units: pd.DataFrame, root: Path,
-              tokenizer, parser, *, min_matches: int = 32, seg_chunk: int = 64,
-              conn: str = "and", max_tokens: int | None = None,
+              tokenizer, parser, *, pattern: re.Pattern, min_matches: int = 32,
+              seg_chunk: int = 64, max_tokens: int | None = None,
               reuse: pd.DataFrame | None = None,
               commit: Callable[[], None] = lambda: None,
               hook: Callable[[str, int], None] = lambda stage, k: None) -> dict:
     """Process one shard; resumable. ``units`` are the prefiltered units of
-    the shard's title (with section_key). ``parser`` needs .parse(token_lists)
-    -> (results, errors), .stanza_version, .model_package. ``hook(stage, k)``
-    is called after 'part' and 'done' of batch k (tests use it to crash).
+    the shard's title (with section_key); sentences matching ``pattern`` are
+    parsed. ``parser`` needs .parse(token_lists) -> (results, errors), where each
+    result is a tuple of values for ``parser.columns``, plus .stanza_version and
+    .model_package. ``hook(stage, k)`` is called after 'part' and 'done' of
+    batch k (tests use it to crash).
 
     Matches with more than ``max_tokens`` tokens are not parsed; each is
     recorded as a failure with error ``too_long: …``. ``reuse`` (columns
-    sent_id, tokens, tree, xpos, stanza_version, model_package) supplies trees
+    sent_id, tokens, model_package and the parser's columns) supplies parses
     already computed by another run: used only when the sent_id, tokens and
     model package all match, otherwise the sentence is parsed."""
     t0 = time.monotonic()
@@ -203,7 +176,7 @@ def run_shard(shard_id: str, sections: list[str], units: pd.DataFrame, root: Pat
             i = todo.index(sec)
             chunk = [s for s in todo[i:i + seg_chunk] if s not in cache]
             u = pd.concat([by_sec.get(s, empty) for s in chunk])
-            sents, st = segment_units(u, tokenizer, conn)
+            sents, st = segment_units(u, tokenizer, pattern)
             for k, v in st.items():
                 seg_stats[k] = seg_stats.get(k, 0) + v
             for s in chunk:
@@ -212,6 +185,7 @@ def run_shard(shard_id: str, sections: list[str], units: pd.DataFrame, root: Pat
 
     counts = {"sections": 0, "batches": 0, "sentences": 0, "matches": 0,
               "parsed": 0, "failed": 0, "reused": 0, "too_long": 0}
+    out_cols = list(parser.columns)
     k = _next_part(shard_dir)
     for keys, frames in _batches(todo, sents_of, min_matches):
         sents = pd.concat(frames, ignore_index=True)
@@ -222,7 +196,7 @@ def run_shard(shard_id: str, sections: list[str], units: pd.DataFrame, root: Pat
         for row in matched[~long].itertuples(index=False):
             prev = reuse_by_id.get(row.sent_id)
             if prev is not None and list(prev.tokens) == list(row.tokens):
-                reused[row.sent_id] = (prev.tree, list(prev.xpos))
+                reused[row.sent_id] = tuple(_plain(getattr(prev, c)) for c in out_cols)
         to_parse = matched[~long & ~matched["sent_id"].isin(reused)]
         results, errors = parser.parse(list(to_parse["tokens"])) if len(to_parse) else ([], [])
         parsed = {sid: (res, err) for sid, res, err in zip(to_parse["sent_id"], results, errors)}
@@ -237,15 +211,14 @@ def run_shard(shard_id: str, sections: list[str], units: pd.DataFrame, root: Pat
                 fails.append({"sent_id": row.sent_id, "unit_id": row.unit_id,
                               "section": row.section, "error": err})
                 continue
-            tree, xpos = res
             rows.append({"sent_id": row.sent_id, "unit_id": row.unit_id,
                          "section": row.section, "title": row.title, "text": row.text,
-                         "tokens": list(row.tokens), "xpos": xpos, "n_tokens": row.n_tokens,
-                         "tree": tree, "stanza_version": parser.stanza_version,
+                         "tokens": list(row.tokens), "n_tokens": row.n_tokens,
+                         **dict(zip(out_cols, res)), "stanza_version": parser.stanza_version,
                          "model_package": parser.model_package})
         if fails:
             append_jsonl(root / "failures" / f"{shard_id}.jsonl", fails)
-        atomic_write_parquet(pd.DataFrame(rows, columns=PARSE_COLUMNS),
+        atomic_write_parquet(pd.DataFrame(rows, columns=parse_columns(out_cols)),
                              shard_dir / f"part-{k:05d}.parquet")
         atomic_write_parquet(sents[SEG_COLUMNS], shard_dir / f"seg-{k:05d}.parquet")
         hook("part", k)
@@ -268,6 +241,11 @@ def run_shard(shard_id: str, sections: list[str], units: pd.DataFrame, root: Pat
     counts["tokenizer_stats"] = {k: v - tok_stats0.get(k, 0)
                                  for k, v in getattr(tokenizer, "stats", {}).items()}
     return counts
+
+
+def _plain(v):
+    """Parquet list cells come back as arrays; parser output holds plain lists."""
+    return v.tolist() if hasattr(v, "tolist") else v
 
 
 # --------------------------------------------------------------------------
@@ -306,7 +284,7 @@ def merge_shards(root: Path, plan: dict[str, list[str]], prefiltered_units: pd.D
         parts += [pd.read_parquet(p) for p in sorted(d.glob("part-*.parquet"))]
         segs += [pd.read_parquet(p) for p in sorted(d.glob("seg-*.parquet"))]
         fails += read_jsonl(root / "failures" / f"{shard_id}.jsonl")
-    parses = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=PARSE_COLUMNS)
+    parses = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame(columns=parse_columns([]))
     segments = pd.concat(segs, ignore_index=True) if segs else pd.DataFrame(columns=SEG_COLUMNS)
     parses, dup_parses = _dedup(parses, "parses")
     segments, dup_segs = _dedup(segments, "segments")

@@ -1,4 +1,4 @@
-"""Sentence segmentation of units and the `not … and` / `not … or` regex (work plan §5.4).
+"""Sentence segmentation of units; each sentence is tested against a study's regex (§5.4).
 
 Stanza's tokenizer does the splitting; a post-pass re-merges splits that are
 not sentence boundaries in statutory text. A split is undone when:
@@ -24,12 +24,6 @@ from typing import Callable, Sequence
 
 import pandas as pd
 
-# Connective -> sentence regex. "and" is the negative-conjunction study; "or" mirrors it
-# for negative disjunction (same shape: not precedes the connective, whole words).
-CONNECTIVES = ("and", "or")
-MATCH_RES = {c: re.compile(rf"\bnot\b.*\b{c}\b", re.IGNORECASE | re.DOTALL) for c in CONNECTIVES}
-MATCH_RE = MATCH_RES["and"]
-
 # Tokens (as Stanza emits them, or with a split-off final ".") that never end
 # a sentence in the Code.
 ABBREV_NONFINAL = frozenset({
@@ -51,10 +45,6 @@ Tokenizer = Callable[[Sequence[str]], list[list[list[Tok]]]]
 
 SENT_COLUMNS = ["sent_id", "unit_id", "section", "title", "text", "tokens",
                 "n_tokens", "n_merged", "matched"]
-
-
-def is_match(text: str, conn: str = "and") -> bool:
-    return MATCH_RES[conn].search(text) is not None
 
 
 def _last_word(tokens: list[Tok]) -> tuple[str, bool]:
@@ -101,8 +91,8 @@ def merge_splits(sents: list[list[Tok]]) -> tuple[list[list[Tok]], list[int], Co
 
 
 def segment_units(units: pd.DataFrame, tokenizer: Tokenizer,
-                  conn: str = "and") -> tuple[pd.DataFrame, dict]:
-    """Segment ``text_parse`` of each unit; flag matches of ``MATCH_RES[conn]``.
+                  pattern: re.Pattern) -> tuple[pd.DataFrame, dict]:
+    """Segment ``text_parse`` of each unit; a sentence is ``matched`` when ``pattern`` finds a hit.
 
     ``units`` needs unit_id, section_key, title, text_parse. Returns the
     sentence table (SENT_COLUMNS; ``section`` holds the section key) and
@@ -125,7 +115,8 @@ def segment_units(units: pd.DataFrame, tokenizer: Tokenizer,
             rows.append({
                 "sent_id": f"{uid}_{k}", "unit_id": uid, "section": sec,
                 "title": title, "text": stext, "tokens": toks,
-                "n_tokens": len(toks), "n_merged": m, "matched": is_match(stext, conn),
+                "n_tokens": len(toks), "n_merged": m,
+                "matched": pattern.search(stext) is not None,
             })
     stats["sentences"] = len(rows)
     return pd.DataFrame(rows, columns=SENT_COLUMNS), dict(stats)

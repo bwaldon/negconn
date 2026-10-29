@@ -2,8 +2,8 @@
 
     python scripts/launch.py --run pilot --titles 29 18 --gpu-budget-seconds 3600
     python scripts/launch.py --run full --gpu-budget-seconds <approved budget>
-    python scripts/launch.py --run disj --conn or --reuse-run full --target-chars 2000000 ...
-    python scripts/launch.py --measure-extract 26 42
+    python scripts/launch.py --run disj --study or --reuse-run full --target-chars 2000000 ...
+    python scripts/launch.py --run 1225b --study 1225b --target-chars 400000 ...
 
 Relaunching with the same arguments resumes: every stage skips finished work.
 """
@@ -17,14 +17,18 @@ from pathlib import Path
 
 import modal
 
+from negconj.study import STUDIES
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def git_commit() -> str:
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    dirty = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", "negconj"], cwd=ROOT).returncode
+    dirty = subprocess.run(["git", "diff", "--quiet", "HEAD", "--", "negconj", "barbosa"],
+                           cwd=ROOT).returncode
     if dirty:
-        sys.exit("negconj/ has uncommitted changes; commit first so the run is reproducible.")
+        sys.exit("negconj/ or barbosa/ has uncommitted changes; commit first so the run is "
+                 "reproducible.")
     return sha
 
 
@@ -36,12 +40,11 @@ def main() -> None:
     ap.add_argument("--target-chars", type=int, default=400_000)
     ap.add_argument("--min-matches", type=int, default=32)
     ap.add_argument("--gpu-budget-seconds", type=float, required=False, default=3600)
-    ap.add_argument("--measure-extract", nargs="*", default=None,
-                    help="only extract these titles to measure memory/runtime")
     ap.add_argument("--stop-after", default=None, choices=["extract"],
                     help="stop the orchestrator after this stage")
-    ap.add_argument("--conn", default="and", choices=["and", "or"],
-                    help="connective: and (negative conjunction) or or (negative disjunction)")
+    ap.add_argument("--study", default="and", choices=list(STUDIES),
+                    help="and (negative conjunction), or (negative disjunction), "
+                         "1225b (sentences shaped like 8 U.S.C. § 1225(b)(2)(A))")
     ap.add_argument("--max-tokens", type=int, default=None,
                     help="token cap; longer matches are recorded as failures, not parsed (default: MAX_GPU_TOKENS)")
     ap.add_argument("--reuse-run", default=None,
@@ -53,16 +56,12 @@ def main() -> None:
     if not a.no_deploy:
         subprocess.run([sys.executable, "-m", "modal", "deploy", "negconj/modal_app.py"],
                        cwd=ROOT, check=True)
-    if a.measure_extract:
-        fn = modal.Function.from_name("negconj", "measure_extract")
-        call = fn.spawn(a.release or "119-121", a.measure_extract)
-    else:
-        fn = modal.Function.from_name("negconj", "orchestrate")
-        extra = {"max_tokens": a.max_tokens} if a.max_tokens is not None else {}
-        call = fn.spawn(run=a.run, release=a.release, titles=a.titles,
-                        target_chars=a.target_chars, gpu_budget_seconds=a.gpu_budget_seconds,
-                        git_commit=commit, min_matches=a.min_matches, stop_after=a.stop_after,
-                        conn=a.conn, reuse_run=a.reuse_run, **extra)
+    fn = modal.Function.from_name("negconj", "orchestrate")
+    extra = {"max_tokens": a.max_tokens} if a.max_tokens is not None else {}
+    call = fn.spawn(run=a.run, release=a.release, titles=a.titles,
+                    target_chars=a.target_chars, gpu_budget_seconds=a.gpu_budget_seconds,
+                    git_commit=commit, min_matches=a.min_matches, stop_after=a.stop_after,
+                    study=a.study, reuse_run=a.reuse_run, **extra)
     print(f"spawned {fn.object_id if hasattr(fn, 'object_id') else ''} call {call.object_id} "
           f"(commit {commit[:10]}). Follow with: modal app logs negconj")
     (ROOT / "data").mkdir(exist_ok=True)

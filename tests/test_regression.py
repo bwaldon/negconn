@@ -44,10 +44,11 @@ def test_one_condensed_unit(pulsifer_unit):
 def test_segmented_into_one_matching_sentence(pulsifer_unit):
     pytest.importorskip("stanza")
     from negconj.segment import build_tokenizer, segment_units, stanza_tokenizer
+    from negconj.connectives import AND
     from negconj.shards import prefilter
-    pre = prefilter(pulsifer_unit)
+    pre = prefilter(pulsifer_unit, AND.unit_patterns)
     assert len(pre) == 1
-    sents, _ = segment_units(pre, stanza_tokenizer(build_tokenizer()))
+    sents, _ = segment_units(pre, stanza_tokenizer(build_tokenizer()), AND.sentence_pattern)
     s = sents[sents["text"].str.contains(NEG, regex=False)]
     assert len(s) == 1 and AND_C in s.iloc[0]["text"] and s.iloc[0]["matched"]
 

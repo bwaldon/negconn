@@ -2,7 +2,12 @@ import re
 
 import pandas as pd
 
-from negconj.segment import is_match, merge_reason, merge_splits, segment_units, split_spaced
+from negconj.connectives import MATCH_RES
+from negconj.segment import merge_reason, merge_splits, segment_units, split_spaced
+
+
+def is_match(text, conn="and"):
+    return MATCH_RES[conn].search(text) is not None
 
 
 def toks(text, start=0):
@@ -79,7 +84,7 @@ def test_segment_units_ids_text_and_match():
                        "Information disclosed may be used.",
                        "Nothing here and there. It is not over."],
     })
-    sents, stats = segment_units(units, split_tokenizer)
+    sents, stats = segment_units(units, split_tokenizer, MATCH_RES["and"])
     assert sents["sent_id"].tolist() == ["u1_0", "u1_1", "u2_0", "u2_1"]
     assert sents.loc[0, "text"] == "The defendant does not have— a prior offense; and a second one."
     assert sents["matched"].tolist() == [True, False, False, False]

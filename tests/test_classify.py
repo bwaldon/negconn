@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from negconj.classify import (
-    and_ccs, c2, classify_frame, classify_tree, dominates, n_conjuncts,
+    c2, classify_frame, conn_ccs, classify_tree, dominates, n_conjuncts,
     not_nodes, to_tree, tree_distance,
 )
 
@@ -20,7 +20,7 @@ PLAN_TABLE = [
 def test_plan_table(tree_str, strict, relaxed):
     t = to_tree(tree_str)
     [nn] = not_nodes(t)
-    [cc] = and_ccs(t)
+    [cc] = conn_ccs(t, "and")
     coord = cc.parent()
     assert c2(nn, coord) is strict
     assert c2(nn, coord, relaxed=True) is relaxed
@@ -66,7 +66,7 @@ def test_no_and_cc_means_not_flagged():
 def test_tree_distance_symmetric():
     t = to_tree(PLAN_TABLE[3][0])
     [nn] = not_nodes(t)
-    coord = and_ccs(t)[0].parent()
+    coord = conn_ccs(t, "and")[0].parent()
     # RB -> VP -> S, then S -> PP -> PP -> NP
     assert tree_distance(nn, coord) == tree_distance(coord, nn) == 5
     assert n_conjuncts(coord) == 2

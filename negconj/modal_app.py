@@ -3,13 +3,15 @@
     modal deploy negconj/modal_app.py      # then scripts/launch.py spawns `orchestrate`
 
 Runs live under a root on the Volume: ``/data`` for the full run, ``/data/{run}``
-for others (e.g. ``/data/pilot``, ``/data/disj``). Raw XML is shared under ``/data/raw``.
-Every stage is skipped when its output exists, so relaunching resumes.
+for others (e.g. ``/data/pilot``, ``/data/disj``, ``/data/1225b``). Raw XML is shared under
+``/data/raw``. Every stage is skipped when its output exists, so relaunching resumes
+(merge, classify and report always rerun).
 
-A run studies one connective (``conn``): "and" (the full run) or "or" (negative
-disjunction, run "disj"). Matches longer than ``max_tokens`` are not parsed and are
-recorded as failures. ``reuse_run`` names a finished run whose merged trees are
-reused for sentences with identical tokens.
+A run carries out one study (``study``, see negconj.study): "and" (the full run), "or"
+(negative disjunction, run "disj") or "1225b" (dependency parses of sentences shaped like
+8 U.S.C. § 1225(b)(2)(A)). Matches longer than ``max_tokens`` are not parsed and are
+recorded as failures. ``reuse_run`` names a finished run whose merged parses are reused
+for sentences with identical tokens and model package.
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ image = (
     .pip_install(*PINNED)
     .env({"STANZA_RESOURCES_DIR": STANZA_DIR, "HF_HOME": HF_HOME})
     # Every model in parse.PARSER_CONFIGS, plus ELECTRA's weights, baked into the image.
+    # (Its own layer: the dependency models came later.)
     .run_commands(
         "python -c \"import stanza; "
         "stanza.download('en', processors='tokenize,mwt,pos,constituency', model_dir='" + STANZA_DIR + "'); "
@@ -51,8 +54,12 @@ image = (
         "from transformers import AutoModel, AutoTokenizer; "
         "AutoTokenizer.from_pretrained('google/electra-large-discriminator'); "
         "AutoModel.from_pretrained('google/electra-large-discriminator')\"")
+    .run_commands(
+        "python -c \"import stanza; "
+        "stanza.download('en', processors={'lemma': 'combined_charlm', "
+        "'depparse': 'combined_electra-large'}, model_dir='" + STANZA_DIR + "')\"")
     .env({"HF_HUB_OFFLINE": "1"})
-    .add_local_python_source("negconj")
+    .add_local_python_source("negconj", "barbosa")
 )
 
 app = modal.App(APP_NAME, image=image)
@@ -74,7 +81,7 @@ def _load_state(root: Path) -> dict:
 
 
 def _save_state(root: Path, state: dict) -> None:
-    from negconj.shards import atomic_write_bytes
+    from negconj.util import atomic_write_bytes
     atomic_write_bytes(_state_path(root), json.dumps(state, indent=1, default=str).encode())
     vol.commit()
 
@@ -87,6 +94,7 @@ def _save_state(root: Path, state: dict) -> None:
 def download(release: str | None = None, titles: list[str] | None = None) -> dict:
     """Fetch the release point (all titles, or the named titles) into /data/raw."""
     from negconj import download as dl
+    from negconj.util import sha256_file
     vol.reload()
     current = dl.current_release_point()
     release = release or current
@@ -101,7 +109,7 @@ def download(release: str | None = None, titles: list[str] | None = None) -> dic
     for t in (titles or ["All"]):
         url = dl.zip_url(release, t)
         z = dl.fetch(url, raw / "zips" / Path(url).name)
-        rec["zips"][Path(url).name] = {"url": url, "sha256": dl.sha256(z)}
+        rec["zips"][Path(url).name] = {"url": url, "sha256": sha256_file(z)}
         rec["xml"] += [p.name for p in dl.unzip_xml(z, raw / release)]
     rec["xml"] = sorted(set(rec["xml"]))
     rec_path.write_text(json.dumps(rec, indent=1))
@@ -111,12 +119,13 @@ def download(release: str | None = None, titles: list[str] | None = None) -> dic
 
 # Pilot: peak RSS 2.4 GiB for Title 42 (the largest), 1.3 GiB for Title 26.
 @app.function(volumes=VOLS, cpu=2, memory=8192, timeout=3600, nonpreemptible=True)
-def extract_title(release: str, xml_name: str, run: str, conn: str = "and") -> dict:
+def extract_title(release: str, xml_name: str, run: str, study: str = "and") -> dict:
     import resource
     from negconj.stages import extract_stage
+    from negconj.study import load_study
     vol.reload()
     t0 = time.monotonic()
-    out = extract_stage(DATA / "raw" / release / xml_name, run_root(run), conn)
+    out = extract_stage(DATA / "raw" / release / xml_name, run_root(run), load_study(study))
     vol.commit()
     out["seconds"] = time.monotonic() - t0
     out["peak_rss_mib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
@@ -125,10 +134,11 @@ def extract_title(release: str, xml_name: str, run: str, conn: str = "and") -> d
 
 @app.function(volumes=VOLS, cpu=2, memory=16384, timeout=3600, nonpreemptible=True)
 def plan_shards(run: str, target_chars: int, titles: list[str] | None = None,
-                conn: str = "and") -> dict:
+                study: str = "and") -> dict:
     from negconj.stages import plan_stage
+    from negconj.study import load_study
     vol.reload()
-    plan = plan_stage(run_root(run), target_chars, titles, conn)
+    plan = plan_stage(run_root(run), target_chars, load_study(study), titles)
     vol.commit()
     return plan
 
@@ -138,7 +148,7 @@ _MODELS: dict = {}
 
 @app.function(volumes=VOLS, gpu="L4", timeout=2 * 3600, retries=3,
               max_containers=MAX_GPU_CONTAINERS)
-def process_shard(run: str, shard_id: str, min_matches: int = 32, conn: str = "and",
+def process_shard(run: str, shard_id: str, min_matches: int = 32, study: str = "and",
                   max_tokens: int | None = MAX_GPU_TOKENS, reuse_run: str | None = None) -> dict:
     """Preemptible GPU worker; resumes from /progress on restart."""
     import pandas as pd
@@ -146,54 +156,59 @@ def process_shard(run: str, shard_id: str, min_matches: int = 32, conn: str = "a
     from negconj.parse import Parser
     from negconj.segment import build_tokenizer, stanza_tokenizer
     from negconj.shards import prefilter, run_shard, shard_title
+    from negconj.study import load_study
     t0 = time.monotonic()
     vol.reload()
     root = run_root(run)
-    if not _MODELS:  # once per container
+    s = load_study(study)
+    if "tok" not in _MODELS:  # once per container
         _MODELS["tok"] = stanza_tokenizer(build_tokenizer(use_gpu=True))
-        _MODELS["parser"] = Parser(use_gpu=True)
+    if s.parser not in _MODELS:
+        _MODELS[s.parser] = Parser(use_gpu=True, config=s.parser)
+    parser = _MODELS[s.parser]
     plan = json.loads((root / "shards.json").read_text())
     title = shard_title(shard_id)
-    units = prefilter(pd.read_parquet(root / "units" / f"{title}.parquet"), conn)
+    units = prefilter(pd.read_parquet(root / "units" / f"{title}.parquet"), s.unit_patterns)
     reuse = None
     if reuse_run is not None:
         reuse = pd.read_parquet(run_root(reuse_run) / "results" / "parses.parquet",
-                                columns=["sent_id", "tokens", "tree", "xpos", "model_package"],
+                                columns=["sent_id", "tokens", "model_package", *parser.columns],
                                 filters=[("title", "==", title)])
-    counts = run_shard(shard_id, plan[shard_id], units, root, _MODELS["tok"], _MODELS["parser"],
-                       min_matches=min_matches, conn=conn, max_tokens=max_tokens, reuse=reuse,
-                       commit=vol.commit)
+    counts = run_shard(shard_id, plan[shard_id], units, root, _MODELS["tok"], parser,
+                       pattern=s.sentence_pattern, min_matches=min_matches,
+                       max_tokens=max_tokens, reuse=reuse, commit=vol.commit)
     counts["gpu_seconds"] = time.monotonic() - t0  # GPU is held for the whole call
     counts["gpu"] = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none"
     return counts
 
 
 @app.function(volumes=VOLS, cpu=4, memory=32768, timeout=3 * 3600, nonpreemptible=True)
-def merge(run: str, conn: str = "and") -> dict:
+def merge(run: str, study: str = "and") -> dict:
     from negconj.stages import merge_stage
+    from negconj.study import load_study
     vol.reload()
     root = run_root(run)
-    out = merge_stage(root, json.loads((root / "shards.json").read_text()), conn)
+    out = merge_stage(root, json.loads((root / "shards.json").read_text()), load_study(study))
     vol.commit()
     return out
 
 
 @app.function(volumes=VOLS, cpu=4, memory=32768, timeout=3 * 3600, nonpreemptible=True)
-def classify(run: str, conn: str = "and") -> dict:
-    from negconj.stages import classify_stage
+def classify(run: str, study: str = "and") -> dict:
+    from negconj.study import load_study
     vol.reload()
-    out = classify_stage(run_root(run), conn)
+    out = load_study(study).classify(run_root(run))
     vol.commit()
     return out
 
 
 @app.function(volumes=VOLS, cpu=4, memory=32768, timeout=3 * 3600, nonpreemptible=True)
-def report(run: str, manifest: dict, stage_counts: dict, conn: str = "and") -> dict:
-    from negconj.report import report_stage
+def report(run: str, manifest: dict, stage_counts: dict, study: str = "and") -> dict:
+    from negconj.study import load_study
     vol.reload()
     root = run_root(run)
-    out = report_stage(root, json.loads((root / "shards.json").read_text()), manifest,
-                       stage_counts, conn)
+    out = load_study(study).report(root, json.loads((root / "shards.json").read_text()), manifest,
+                                   stage_counts)
     vol.commit()
     return out
 
@@ -211,13 +226,13 @@ def _shard_complete(root: Path, shard_id: str, sections: list[str]) -> bool:
 def orchestrate(run: str = "full", release: str | None = None, titles: list[str] | None = None,
                 target_chars: int = 400_000, gpu_budget_seconds: float = 36_000,
                 git_commit: str = "unknown", min_matches: int = 32,
-                stop_after: str | None = None, conn: str = "and",
+                stop_after: str | None = None, study: str = "and",
                 max_tokens: int | None = MAX_GPU_TOKENS, reuse_run: str | None = None) -> dict:
     """Run every stage in order; skip what is done; stop launching shards
     once reported GPU seconds pass ``gpu_budget_seconds``. ``stop_after="extract"``
     returns after extraction (per-title prefilter sizes, for cost projection)."""
     from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-    from negconj.shards import title_sort_key
+    from negconj.util import title_sort_key
 
     t_start = time.monotonic()
     vol.reload()
@@ -225,7 +240,7 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
     root.mkdir(parents=True, exist_ok=True)
     state = _load_state(root)
     state.update({"run": run, "git_commit": git_commit, "target_chars": target_chars,
-                  "gpu_budget_seconds": gpu_budget_seconds, "connective": conn,
+                  "gpu_budget_seconds": gpu_budget_seconds, "study": study,
                   "max_tokens": max_tokens, "reuse_run": reuse_run})
     if reuse_run is not None and not (run_root(reuse_run) / "results" / "parses.parquet").exists():
         raise RuntimeError(f"reuse_run {reuse_run!r} has no merged parses.parquet")
@@ -244,7 +259,7 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
             if not titles or x.removeprefix("usc").removesuffix(".xml") in titles]
 
     # 2. extract (parallel, one call per title)
-    ex = list(extract_title.map([release] * len(xmls), xmls, [run] * len(xmls), [conn] * len(xmls)))
+    ex = list(extract_title.map([release] * len(xmls), xmls, [run] * len(xmls), [study] * len(xmls)))
     state["stages"]["extract"] = {e["title"]: e for e in ex}
     log(f"extracted {len(ex)} titles, {sum(e['units'] for e in ex)} units, "
         f"{sum(e['prefilter_chars'] for e in ex)} prefilter chars")
@@ -254,7 +269,7 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
                 "extract": state["stages"]["extract"]}
 
     # 3. plan
-    plan = plan_shards.remote(run, target_chars, all_titles, conn)
+    plan = plan_shards.remote(run, target_chars, all_titles, study)
     log(f"plan: {len(plan)} shards, {sum(len(v) for v in plan.values())} sections")
 
     # 4. process shards, at most MAX_GPU_CONTAINERS in flight, within budget
@@ -275,7 +290,7 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
                         f"{len(queue)} remaining shards, first {queue[0]}")
                     break
                 sid = queue.pop(0)
-                inflight[pool.submit(process_shard.remote, run, sid, min_matches, conn,
+                inflight[pool.submit(process_shard.remote, run, sid, min_matches, study,
                                      max_tokens, reuse_run)] = sid
             if stopped:
                 queue = []
@@ -305,9 +320,9 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
         return {"status": "incomplete", "incomplete": incomplete, "gpu_seconds": gpu_total}
 
     # 5. merge, 6. classify, 7. report
-    state["stages"]["merge"] = merge.remote(run, conn)
+    state["stages"]["merge"] = merge.remote(run, study)
     log(f"merge: {state['stages']['merge']}")
-    state["stages"]["classify"] = classify.remote(run, conn)
+    state["stages"]["classify"] = classify.remote(run, study)
     log(f"classify: {state['stages']['classify']}")
 
     m, c = state["stages"]["merge"], state["stages"]["classify"]
@@ -326,9 +341,7 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
         "parse_failures_too_long": m.get("too_long", 0),
         "parses_reused": sum(s.get("reused", 0) for s in shard_stats.values()),
         "duplicate_rows_dropped_in_merge": m["duplicate_parse_rows_dropped"],
-        f"not_{conn}_pairs": c["pairs"],
-        "flagged": c["flagged"],
-        "flagged_relaxed": c["flagged_relaxed"],
+        **c,
     }
     gpus = sorted({s.get("gpu") for s in shard_stats.values() if s.get("gpu")})
     import pandas as pd
@@ -351,17 +364,10 @@ def orchestrate(run: str = "full", release: str | None = None, titles: list[str]
         "shards": shard_stats,
     }
     if reuse_run is not None:
-        from negconj.report import sha256_file
+        from negconj.util import sha256_file
         manifest["reuse_parses_sha256"] = sha256_file(run_root(reuse_run) / "results" / "parses.parquet")
-    checks = report.remote(run, manifest, stage_counts, conn)
+    checks = report.remote(run, manifest, stage_counts, study)
     state["stages"]["report"] = checks
     log(f"report: checks ok = {checks.get('ok')}")
     return {"status": "done", "counts": stage_counts, "checks": checks, "gpu_seconds": gpu_total}
 
-
-@app.function(volumes=VOLS, cpu=1, memory=2048, timeout=6 * 3600, nonpreemptible=True)
-def measure_extract(release: str, titles: list[str]) -> list[dict]:
-    """Pilot step 2: extract large titles alone to size extract_title's memory."""
-    download.remote(release, titles)
-    xmls = [f"usc{t}.xml" for t in titles]
-    return list(extract_title.map([release] * len(xmls), xmls, ["measure"] * len(xmls)))

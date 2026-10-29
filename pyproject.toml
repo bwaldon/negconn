@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "negconj"
 version = "0.1.0"
-description = "Negated connectives (… not … and/or …) in the U.S. Code: extraction, Stanza parsing, C2 classification"
+description = "U.S. Code corpus studies: negated connectives (C2 on constituency trees) and 1225(b)(2)(A)-shaped sentences (dependency query)"
 requires-python = ">=3.12"
 dependencies = [
     "modal==1.6.2",
@@ -21,8 +21,8 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["negconj"]
+packages = ["negconj", "barbosa"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "barbosa/tests"]
 pythonpath = [".", "tests"]
