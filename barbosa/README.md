@@ -10,14 +10,17 @@ Which other U.S. Code provisions share this structure?
 1. A phrase like *in the case of* followed by an indefinite noun phrase (*an alien who is an
    applicant for admission*; *a*/*an* signals indefiniteness), and
 2. an *if*-clause (a conditional antecedent) that repeats that indefinite noun phrase with a
-   different modifier (*an alien seeking admission*).
+   different modifier (*an alien seeking admission*),
+
+with the phrase and the *if*-clause modifying the same head, as in the provision (both modify
+*detained*).
 
 **Dashboard:** <https://bwaldon.github.io/negconn/1225b/>. Every sentence the RA's linear queries
 find, with its dependency parse. By default the list shows the sentences the dependency query
-matches; it can also show only strict matches, near misses (three of the four conditions of a
-match) or everything, filtered by the condition not met, the RA's query, title, unit type or text. Condensed chapeaus are laid out with
-their nested structure ((1), (A), (i), …). Review marks are saved in the browser and can be
-exported as CSV.
+matches; it can also show near misses (same head, four of the five conditions) or everything,
+filtered by the condition not met, the linear query, title, unit type or text. Condensed chapeaus
+are laid out with their nested structure ((1), (A), (i), …). Review marks are saved in the browser
+and can be exported as CSV.
 
 ## Method
 
@@ -34,7 +37,8 @@ negated-connective runs.
 **Parse.** Every matching sentence is dependency-parsed with Stanza in Universal Dependencies
 (parser config `electra-dep`: pos `combined_electra-large`, lemma `combined_charlm`, depparse
 `combined_electra-large`, Stanza's most accurate English models), one best parse per sentence,
-on Modal GPUs (L4, falling back to A10G or L40S). Sentences over 4,000 tokens are recorded as failures, not parsed.
+on Modal GPUs (L4, falling back to A10G or L40S). Sentences over 4,000 tokens are recorded as
+failures, not parsed.
 
 **Dependency query** (`depquery.py`). In the provision's parse, *case* (with *in the* and the
 *of*-phrase *an alien who is an applicant for admission*) and the *if*-clause headed by
@@ -53,14 +57,11 @@ For each candidate pair (one occurrence of a query phrase + *a*/*an*, one *if*),
 |---|---|
 | `frame_np` | the *a*/*an* after the phrase is the `det` of a noun N1: an indefinite noun phrase |
 | `if_outside` | an *if* attached as `mark` comes after it, and its clause is outside the phrase (not dominated by the phrase's head, e.g. *case*) |
-| `repeated_np` | the *if*-clause contains another noun with N1's lemma whose `det` is *a*/*an* (N2) |
+| `same_governor` | the phrase and the *if*-clause are dependents of the same word: both modify the main clause (*case* and *determines* both depend on *detained*) |
+| `repeated_np` | the *if*-clause contains another noun with N1's lemma whose `det` is *a*/*an* (N2), not itself right after one of the phrases (a parallel "…, and in the case of an X" that the parser folded into the *if*-clause is a new provision, not a repetition) |
 | `different_mods` | N1 and N2 both have modifiers (`amod`, `acl`, `acl:relcl`, `nmod`, `compound`), and the words of N2's modifiers, in sentence order, differ from N1's |
-| `same_governor` | the phrase and the *if*-clause are dependents of the same word: both modify the main clause |
 
-The first four are the two properties above: a sentence **matches** when one candidate meets
-them, and is a **strict match** when that candidate also meets `same_governor`, the provision's
-own shape (*case* and *determines* both depend on *detained*). A match that is not strict has its
-*if*-clause attached elsewhere, either by a parse error or because it conditions another clause. The phrase's head is the lowest word
+A sentence **matches** when one candidate meets all five. The phrase's head is the lowest word
 dominating both the phrase's first word and N1, so *with respect to an employee* parsed as a fixed
 expression (the phrase's words hanging off *employee*) is handled like *in the case of an alien*.
 8 U.S.C. § 1225(b)(2)(A) itself is the regression case (`tests/test_1225b.py`).
@@ -98,23 +99,22 @@ candidate's conditions), `candidates.parquet` (every candidate), `matches.csv`/`
 |---|---|
 | found by the RA's queries | 1,992 (1,987 parsed; 5 over 4,000 tokens) |
 | indefinite NP after the phrase, if-clause outside it | 1,854 |
-| … with N1's noun repeated as an indefinite NP in the if-clause | 199 |
-| **match** (… with different modifiers) | **132** |
-| **strict match** (… phrase and if-clause modify the same head) | **45** |
-| near misses (3 of the 4 conditions of a match) | 87 |
+| … phrase and if-clause modify the same head | 804 |
+| … with N1's noun repeated as an indefinite NP in the if-clause | 68 |
+| **match** (… with different modifiers) | **45** |
+| near misses (all but different modifiers) | 23 |
 
-8 U.S.C. § 1225(b)(2)(A) is a strict match; so are, e.g., 8 U.S.C. § 1229b(a), 8 U.S.C.
-§ 1151(f)(2)–(3) and 18 U.S.C. § 3553(f). *In the case of* accounts for 95 of the matches and
-*with respect to* for 37. Strict matches are the cleaner set; non-strict ones include if-clauses
-the parser stretched too far. Detail, per query and per title, in `results/summary.md` and
-`RUNLOG.md`.
+8 U.S.C. § 1225(b)(2)(A) matches; so do, e.g., 8 U.S.C. § 1229b(a), 8 U.S.C. § 1151(f)(2)–(3)
+and 18 U.S.C. § 3553(f). *In the case of* accounts for 36 of the matches and *with respect to*
+for 10. Detail, per query and per title, in `results/summary.md` and `RUNLOG.md`.
 
 ## Limitations
 
 - Recall is bounded by the nine linear queries: *in the case of any alien*, *the alien*, *where an
   alien* … are never parsed.
 - Each condition rests on one best parse; attachment of the phrase and of the *if*-clause is the
-  weakest point on long condensed-chapeau sentences, so `same_governor` near misses are worth a look.
+  weakest point on long condensed-chapeau sentences, so a provision of the right shape that the
+  parser attaches differently is missed.
 - Repetition is by head lemma (*an alien … an alien*), not by meaning (*an individual … a person*).
 - The match is structural. Whether the two noun phrases pick out the same individuals is the
   interpretive question the dashboard is for.

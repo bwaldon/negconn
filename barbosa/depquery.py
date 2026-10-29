@@ -35,19 +35,17 @@ Conditions, checked for every (frame phrase, if) candidate in a sentence
 frame_np        the frame phrase introduces an indefinite noun phrase (N1 exists).
 if_outside      an if-clause comes after N1's determiner and lies outside the frame (H is not
                 dominated by the frame).
+same_governor   H and the frame are dependents of the same governor: both modify the main
+                clause, as in the provision.
 repeated_np     the if-clause contains another indefinite noun phrase N2 ("a"/"an" as its det)
                 whose head has N1's lemma, and that is not itself introduced by one of the
                 phrases (a parallel "…, and in the case of an alien …" swallowed by an
                 over-long if-clause is a new frame, not a repetition inside the condition).
 different_mods  N1 and N2 both have modifiers, and their modifier texts differ.
-same_governor   H and the frame are dependents of the same governor: both modify the main
-                clause, as in the provision.
 
-The first four are the two structural properties asked for (an indefinite noun phrase after the
-phrase; an if-clause that repeats it with a different modifier): a sentence **matches** when one
-candidate meets them. It is a **strict** match when that candidate also meets same_governor. The
-best candidate is a strict match if there is one, else a match, else the one meeting the most
-conditions (ties: the longest run of conditions met in the order above, then the earliest).
+A sentence matches when one candidate meets all five. Its best candidate is a matching one if
+there is one, else the one meeting the most conditions (ties: the longest run of conditions met
+in the order above, then the earliest).
 """
 
 from __future__ import annotations
@@ -59,8 +57,7 @@ import pandas as pd
 INDEFINITE = frozenset({"a", "an"})
 NOMINAL = frozenset({"NOUN", "PROPN"})
 MODIFIER_RELS = frozenset({"amod", "acl", "nmod", "compound"})
-CONDITIONS = ("frame_np", "if_outside", "repeated_np", "different_mods", "same_governor")
-REQUIRED = CONDITIONS[:4]
+CONDITIONS = ("frame_np", "if_outside", "same_governor", "repeated_np", "different_mods")
 
 
 @dataclass(frozen=True)
@@ -177,11 +174,7 @@ class Candidate:
 
     @property
     def matches(self) -> bool:
-        return all(self.met[k] for k in REQUIRED)
-
-    @property
-    def strict(self) -> bool:
-        return self.matches and self.met["same_governor"]
+        return self.n_met == len(CONDITIONS)
 
 
 def _mod_text(t: DepTree, mods: list[int]) -> str:
@@ -241,7 +234,7 @@ def candidates(t: DepTree, phrases: dict[str, tuple[str, ...]]) -> list[Candidat
 def best(cands: list[Candidate]) -> Candidate | None:
     if not cands:
         return None
-    return max(cands, key=lambda c: (c.strict, c.matches, c.n_met, c.run, -c.phrase[0], -c.mark))
+    return max(cands, key=lambda c: (c.n_met, c.run, -c.phrase[0], -c.mark))
 
 
 # --------------------------------------------------------------------------
@@ -265,7 +258,7 @@ def candidate_row(sent_id: str, t: DepTree, c: Candidate) -> dict:
         "mods1": [_span(t, m) for m in c.mods1], "mods2": [_span(t, m) for m in c.mods2],
         "frame_span": _span(t, c.frame), "if_span": _span(t, c.if_head),
         "if_deprel": t.words[c.if_head].deprel if c.if_head >= 0 else None,
-        **c.met, "n_met": c.n_met, "matches": c.matches, "strict": c.strict,
+        **c.met, "n_met": c.n_met, "matches": c.matches,
     }
 
 
@@ -280,14 +273,14 @@ def classify_conllu(sent_id: str, conllu: str,
     rows = [candidate_row(sent_id, t, c) for c in cands]
     b = best(cands)
     summary = {"sent_id": sent_id, "n_words": len(t), "n_candidates": len(cands),
-               "matches": any(c.matches for c in cands), "strict": any(c.strict for c in cands),
+               "matches": any(c.matches for c in cands),
                "best": cands.index(b) if b is not None else -1,
                **{f"best_{k}": (b.met[k] if b is not None else False) for k in CONDITIONS},
                "best_n_met": b.n_met if b is not None else 0}
     return rows, summary
 
 
-SENTENCE_COLUMNS = ["sent_id", "n_words", "n_candidates", "matches", "strict", "best",
+SENTENCE_COLUMNS = ["sent_id", "n_words", "n_candidates", "matches", "best",
                     *[f"best_{k}" for k in CONDITIONS], "best_n_met"]
 
 

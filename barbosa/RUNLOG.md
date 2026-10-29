@@ -37,7 +37,7 @@ Decisions, counts and anomalies for the study of sentences shaped like 8 U.S.C. 
 
 ## The dependency query, as reviewed on the results
 First version (run 3): all five conditions required. 59 matches. Review of matches and near
-misses led to two changes (user-approved scope: the two properties as stated):
+misses led to three changes:
 1. **Tiers.** The stated properties do not ask that the phrase and the if-clause modify the same
    head; that condition (`same_governor`) was mine. A match is now the four conditions encoding the
    two properties; `same_governor` makes it a strict match. Most `same_governor` failures were
@@ -48,28 +48,36 @@ misses led to two changes (user-approved scope: the two properties as stated):
    if-clause over a parallel provision, so N2 was the N1 of the next *in the case of* (5 U.S.C.
    § 5542(h)(2), 20 U.S.C. § 1070a(b)(1), 8 U.S.C. § 1231(a)(4)(B), …). Excluded.
 
-## Results (final, c6e163f)
+## Results (c6e163f; superseded below)
+132 matches without `same_governor`, 45 with it ("strict"), 87 near misses.
+
+## Same head required again (user decision)
+The user is not interested in sentences where the phrase and the if-clause modify different heads,
+so `same_governor` is a condition of a match again and the strict tier is gone. Order of the
+conditions: frame_np, if_outside, same_governor, repeated_np, different_mods. Near misses: best
+candidate meets `same_governor` and four of the five conditions (in practice: a repeated noun
+whose modifiers are the same or missing). The two later refinements (modifiers compared in
+order, N2 not itself framed) stay.
+
+## Results (final)
 | sentences with a candidate where … | sentences |
 |---|---|
 | matches a linear query (parsed) | 1,987 |
 | + the phrase introduces an indefinite noun phrase (N1) | 1,987 |
 | + an if-clause after it, outside the phrase | 1,854 |
-| + the if-clause has an indefinite NP with N1's head noun (N2) | 199 |
-| + N1 and N2 both modified, differently = **match** | **132** |
-| + the phrase and the if-clause modify the same head = **strict match** | **45** |
+| + the phrase and the if-clause modify the same head | 804 |
+| + the if-clause has an indefinite NP with N1's head noun (N2) | 68 |
+| + N1 and N2 both modified, differently = **match** | **45** |
 
-- Near misses (3 of the 4 conditions of a match): 87 (67 lack different modifiers, 20 have the
-  if-clause inside the phrase).
-- By linear query (sentences it finds: parsed / matches / strict): *in the case of* 1,154 / 95 / 36;
-  *with respect to* 793 / 37 / 10; *regarding* 31 / 4 / 0; *concerning* 24 / 2 / 0; *in the event of*
-  18 / 2 / 0; *respecting* 11 / 2 / 1; *in the event that* 11 / 1 / 1; *with regard to* 9 / 2 / 0;
-  *in regard to* 0. (A sentence can match more than one query.)
-- **8 U.S.C. § 1225(b)(2)(A): strict match** (regression test on the results passes).
-  Strict matches in Title 8 also include § 1229b(a) (cancellation of removal: *an alien who is
-  inadmissible or deportable* … *an alien lawfully admitted for permanent residence*) and
-  § 1151(f)(2), (3). 18 U.S.C. § 3553(f) (Pulsifer) is a strict match too.
-- Non-strict matches are noisier: in 29 of 87, a ";" lies between the *if* and N2, a sign of an
-  over-long if-clause.
+- The 45 are exactly the earlier strict matches. Near misses: 23, all with the same or no
+  modifiers on one side.
+- By linear query (sentences it finds: parsed / matches): *in the case of* 1,154 / 36; *with
+  respect to* 793 / 10; *respecting* 11 / 1; *in the event that* 11 / 1; the other five 0.
+  (A sentence can match more than one query.)
+- **8 U.S.C. § 1225(b)(2)(A) matches** (regression test on the results). Matches in Title 8 also
+  include § 1229b(a) (cancellation of removal: *an alien who is inadmissible or deportable* …
+  *an alien lawfully admitted for permanent residence*) and § 1151(f)(2), (3). 18 U.S.C.
+  § 3553(f) (Pulsifer) matches too.
 
 ## Dashboard
 - `python -m barbosa.build_dashboard --results barbosa/results --out site/1225b`: 1,987 rows,

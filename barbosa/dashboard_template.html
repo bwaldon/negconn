@@ -106,15 +106,17 @@ details.conllu tr.r-if td:nth-child(2) { color: var(--accent); font-weight: 600;
 const DATASETS = /*__DATASETS__*/[];
 let META = null, ROWS = [];
 const PARSES = {};
-// Conditions in order (META.conditions); the first META.n_required make a match, the last makes it strict.
+// Conditions in order (META.conditions); a match meets all of them. A near miss has the provision's shape
+// (the phrase and the if-clause modify the same head) and meets all but one.
 const DEP = {
   index(d) {
     META = d;
     ROWS = d.rows.map((r, n) => ({ n, key: r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3], words: r[4].split(" "),
-      queries: r[5], matches: r[6], strict: r[7], nMet: r[8], best: r[9], breaks: r[11] || [], conllu: null,
-      cands: r[10].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
+      queries: r[5], matches: r[6], nMet: r[7], best: r[8], breaks: r[10] || [], conllu: null,
+      cands: r[9].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
         n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], met: d.conditions.map((_, k) => !!(c[13] & (1 << k))) })) }));
-    ROWS.forEach(r => { const c = r.cands[r.best]; r.near = !r.matches && !!c && c.met.slice(0, d.n_required).filter(Boolean).length === d.n_required - 1; });
+    const same = d.conditions.findIndex(([k]) => k === "same_governor");
+    ROWS.forEach(r => { const c = r.cands[r.best]; r.near = !r.matches && !!c && c.met[same] && r.nMet === d.conditions.length - 1; });
   },
   parses(title, map) { PARSES[title] = map; },
 };
@@ -157,9 +159,8 @@ function setup() {
   const m = META.manifest || {};
   $("runmeta").textContent = m.release_point ? "U.S. Code release " + m.release_point : "";
   const count = f => ROWS.filter(f).length.toLocaleString();
-  $("f-dq").innerHTML = `<option value="match">Matches: both properties (${count(r => r.matches)})</option>
-    <option value="strict">Strict matches: phrase and if-clause modify the same head (${count(r => r.strict)})</option>
-    <option value="near">Near misses: 3 of the 4 conditions of a match (${count(r => r.near)})</option>
+  $("f-dq").innerHTML = `<option value="match">Matches: all five conditions (${count(r => r.matches)})</option>
+    <option value="near">Near misses: same head, four of five (${count(r => r.near)})</option>
     <option value="">Every sentence a linear query found (${ROWS.length.toLocaleString()})</option>`;
   $("f-miss").innerHTML = `<option value="">Any</option>` + META.conditions.map(([k, t], i) => `<option value="${i}">${esc(t)}</option>`).join("");
   $("f-lq").innerHTML = `<option value="">Any of the nine</option>` + META.queries.map((q, i) => {
@@ -174,7 +175,7 @@ function setup() {
   $("clear").addEventListener("click", () => clearFilters(""));
   $("go-prov").addEventListener("click", () => {
     const r = ROWS.find(x => x.ident === META.provision); if (!r) return;
-    if (!matches(r)) clearFilters(r.matches ? "match" : "");  // the provision is a strict match
+    if (!matches(r)) clearFilters(r.matches ? "match" : "");
     select(r.key);
   });
 }
@@ -186,7 +187,6 @@ function clearFilters(dq) {
 
 function matches(r) {
   if (st.dq === "match" && !r.matches) return false;
-  if (st.dq === "strict" && !r.strict) return false;
   if (st.dq === "near" && !r.near) return false;
   if (st.miss !== "" && (!r.cands.length || bestCand(r).met[+st.miss])) return false;
   if (st.lq !== "" && !r.queries.includes(+st.lq)) return false;
@@ -211,11 +211,11 @@ function snippet(r) {
   return merged.map(([a, b]) => r.words.slice(a, b).map((w, k) => { const c2 = role(a + k); return c2 ? `<span style="color:var(--${c2});font-weight:600">${esc(w)}</span>` : esc(w); }).join(" "))
     .join(` <span class="gap">…</span> `);
 }
-function bitsHtml(c) { return `<span class="bits" title="conditions met, in order; the last is the strict one">${c.met.map((x, i) => `${i === META.n_required ? " " : ""}<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
+function bitsHtml(c) { return `<span class="bits" title="conditions met, in order">${c.met.map(x => `<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
 
 let filtered = [];
 function refresh() {
-  $("f-miss").disabled = st.dq === "strict";
+  $("f-miss").disabled = st.dq === "match";
   filtered = ROWS.filter(matches);
   $("count").textContent = `${filtered.length.toLocaleString()} sentence${filtered.length === 1 ? "" : "s"}`;
   const shown = filtered.slice(0, st.limit);
@@ -282,9 +282,9 @@ function renderDetail() {
   const r = findRow(st.sel); if (!r) return;
   const P = parseConllu(r.conllu), c = r.cands[st.cand];
   const { cls, ifSpan } = roles(P, c);
-  const req = META.n_required, nReq = c ? c.met.slice(0, req).filter(Boolean).length : 0;
-  const pill = r.strict ? `<span class="pill match">Strict match</span>` : r.matches ? `<span class="pill match">Match</span>`
-    : r.near ? `<span class="pill near">Near miss · ${nReq} of ${req}</span>` : `<span class="pill none">${nReq} of ${req}</span>`;
+  const nC = META.conditions.length;
+  const pill = r.matches ? `<span class="pill match">Matches</span>`
+    : r.near ? `<span class="pill near">Near miss · ${r.nMet} of ${nC}</span>` : `<span class="pill none">${r.nMet} of ${nC}</span>`;
   const lii = liiUrl(r.ident);
   const has = (i, k) => cls[i].has(k);
   const parts = [], gaps = [];
@@ -307,7 +307,7 @@ function renderDetail() {
       <td class="ctx">${ctx(x.p0, x.det1 + 3, [x.det1, x.n1], "conj")}</td>
       <td class="ctx">${x.mark >= 0 ? ctx(x.mark, x.mark + 4, [x.mark], "accent") + ` <span class="hint">word ${x.mark + 1}</span>` : `<span class="no">none</span>`}</td>
       <td class="ctx">${x.n2 >= 0 ? ctx(x.det2 - 1, x.n2 + 3, [x.det2, x.n2], "neg") : `<span class="no">none</span>`}</td>
-      <td>${bitsHtml(x)} ${x.met.slice(0, req).filter(Boolean).length}/${req}${x.met[req] ? " + strict" : ""}</td></tr>`;
+      <td>${bitsHtml(x)} ${x.met.filter(Boolean).length}/${nC}</td></tr>`;
   }).join("");
   const rv = reviews[r.key] || {};
   const qs = r.queries.map(i => esc(phraseLabel(i))).join("; ");

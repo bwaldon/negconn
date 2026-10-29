@@ -79,7 +79,7 @@ def test_provision_matches_case_of_only():
 
 def test_provision_matches_all_conditions():
     rows, s = dq.classify_conllu("a", A["conllu"], PHRASES)
-    assert s["matches"] and s["strict"] and s["best_n_met"] == 5
+    assert s["matches"] and s["best_n_met"] == 5
     [r] = rows
     t = dq.read_conllu(A["conllu"])
     w = lambda i: t.words[i].form
@@ -122,7 +122,7 @@ def test_if_clause_inside_the_frame():
 def test_frame_attached_inside_the_if_clause_is_not_same_governor():
     text = edit(A["conllu"], {CASE: {6: DETERMINES}})
     assert met(text) == set(dq.CONDITIONS) - {"same_governor"}
-    assert summary(text)["matches"] and not summary(text)["strict"]  # a match, not a strict one
+    assert not summary(text)["matches"]
 
 
 def test_frame_at_the_root():
@@ -165,7 +165,7 @@ def test_same_modifier_words_attached_differently():
     assert met(conllu(CREDIT)) == set(dq.CONDITIONS) - {"different_mods"}
     other = list(CREDIT)
     other[19] = ("water", "water", "NOUN", 18, "obl")
-    assert summary(conllu(other))["strict"]
+    assert summary(conllu(other))["matches"]
 
 
 def test_parallel_frame_is_not_a_repeat():
@@ -201,13 +201,12 @@ def test_best_candidate():
         c.met.update(dict.fromkeys(conds, True))
         return c
     early = cand(0, 10, ["frame_np", "repeated_np", "different_mods"])     # 3 met, run 1
-    late = cand(0, 20, ["frame_np", "if_outside", "same_governor"])       # 3 met, run 2
-    match = cand(0, 30, dq.REQUIRED)                                      # a match, not strict
-    four = cand(0, 40, ["frame_np", "if_outside", "repeated_np", "same_governor"])
+    late = cand(0, 20, ["frame_np", "if_outside", "same_governor"])       # 3 met, run 3
+    four = cand(0, 30, ["frame_np", "if_outside", "repeated_np", "different_mods"])
     full = cand(30, 40, dq.CONDITIONS)
     assert dq.best([early, late]) is late
-    assert dq.best([four, match]) is match and match.matches and not match.strict
-    assert dq.best([early, late, match, full]) is full and full.strict
+    assert dq.best([early, late, four]) is four and not four.matches
+    assert dq.best([early, late, four, full]) is full and full.matches
     assert dq.best([cand(0, 10, ["frame_np"]), cand(0, 20, ["frame_np"])]).mark == 10
     assert dq.best([]) is None
 
@@ -217,7 +216,6 @@ def test_classify_frame_columns():
     cands, sents = dq.classify_frame(parses, PHRASES)
     assert list(cands.columns) == dq.CANDIDATE_COLUMNS and len(cands) == 2
     assert sents["matches"].tolist() == [True, False] and sents["best_n_met"].tolist() == [5, 1]
-    assert sents["strict"].tolist() == [True, False]
 
 
 # --------------------------------------------------------------------------
@@ -228,6 +226,6 @@ def test_classify_frame_columns():
 def test_provision_matches_in_results():
     cls = pd.read_parquet(RESULTS / "sentences_classified.parquet")
     hit = cls[cls["identifier"] == PROVISION]
-    assert len(hit) == 1 and bool(hit.iloc[0]["matches"]) and bool(hit.iloc[0]["strict"])
+    assert len(hit) == 1 and bool(hit.iloc[0]["matches"])
     assert list(hit.iloc[0]["queries"]) == ["case_of"]
     assert list(hit.iloc[0]["tokens"]) == A["tokens"]

@@ -6,10 +6,9 @@ dependency-parsed (Stanza, UD; parser "electra-dep") and the dependency query
 
 1. a phrase like "in the case of" followed by an indefinite noun phrase ("an alien who is an
    applicant for admission"), and
-2. an if-clause that repeats that indefinite noun phrase with a different modifier ("an alien
+2. an if-clause, modifying the same head as the phrase (both modify the main clause, as in the
+   provision), that repeats that indefinite noun phrase with a different modifier ("an alien
    seeking admission").
-
-A strict match also has the phrase and the if-clause modifying the same head, as in the provision.
 
 Westlaw → regex: ``"p #w a" OR "p #w an"`` is the phrase followed by "a" or "an" (``#`` only
 turns off Westlaw's plurals and equivalents, so the word is matched as written); ``x +s y`` is
@@ -70,7 +69,7 @@ def queries_matching(text: str) -> list[str]:
 # --------------------------------------------------------------------------
 
 MATCH_COLUMNS = ["sent_id", "title", "section", "identifier", "elem_source", "is_appendix",
-                 "strict", "queries", "text", "text_display", "conllu"]
+                 "queries", "text", "text_display", "conllu"]
 
 
 def classify_stage(root: Path) -> dict:
@@ -91,14 +90,15 @@ def classify_stage(root: Path) -> dict:
     atomic_write_parquet(hits, res / "matches.parquet")
     atomic_write_csv(hits.drop(columns="conllu"), res / "matches.csv")
     return {"candidates": len(cands), "dep_query_matches": len(hits),
-            "dep_query_strict_matches": int(sents["strict"].sum()),
             "near_misses": int(near_misses(sents).sum())}
 
 
 def near_misses(sents: pd.DataFrame) -> pd.Series:
-    """Sentences that do not match but whose best candidate meets 3 of the 4 required conditions."""
-    met = sum(sents[f"best_{k}"].astype(int) for k in depquery.REQUIRED)
-    return ~sents["matches"] & (met == len(depquery.REQUIRED) - 1)
+    """Sentences that do not match but whose best candidate has the provision's shape (the phrase
+    and the if-clause modify the same head) and meets all but one of the other conditions; in
+    practice, a repeated noun whose modifiers are the same or missing."""
+    return (~sents["matches"] & sents["best_same_governor"]
+            & (sents["best_n_met"] == len(depquery.CONDITIONS) - 1))
 
 
 # --------------------------------------------------------------------------
@@ -108,9 +108,9 @@ def near_misses(sents: pd.DataFrame) -> pd.Series:
 CONDITION_TEXT = {
     "frame_np": "the phrase introduces an indefinite noun phrase (N1)",
     "if_outside": "an if-clause after it, outside the phrase",
+    "same_governor": "the phrase and the if-clause modify the same head",
     "repeated_np": "the if-clause has an indefinite noun phrase with N1's head noun (N2)",
     "different_mods": "N1 and N2 are both modified, with different modifiers",
-    "same_governor": "strict: the phrase and the if-clause modify the same head",
 }
 
 LIMITATIONS = """\
@@ -121,8 +121,8 @@ LIMITATIONS = """\
   reproduced; sentences are this pipeline's segmentation (Stanza plus the statutory re-merge pass,
   with condensed chapeaus as one sentence).
 - **Parser errors.** Each condition rests on one best UD parse. Attachment of the frame phrase and of
-  the if-clause is the weakest point on long sentences: a match that is not strict may be a parse
-  error or a genuinely different structure (the if-clause conditioning another clause).
+  the if-clause is the weakest point on long sentences, and `same_governor` depends on both: a
+  provision of the right shape that the parser attaches differently is missed.
 - **Repetition is by head lemma.** "An alien … if an alien" repeats; "an individual … if a person"
   does not. Modifiers are compared as text (amod, acl, nmod, compound dependents of the noun).
 - **Syntactic, not interpretive.** A match says the sentence has the provision's shape, not that the
@@ -135,8 +135,7 @@ def _funnel(cands: pd.DataFrame, n_sents: int) -> pd.DataFrame:
     met = pd.Series(True, index=cands.index)
     for k in depquery.CONDITIONS:
         met &= cands[k]
-        label = f"+ {CONDITION_TEXT[k]}" + (" = **match**" if k == depquery.REQUIRED[-1] else
-                                            " = **strict match**" if k == depquery.CONDITIONS[-1] else "")
+        label = f"+ {CONDITION_TEXT[k]}" + (" = **match**" if k == depquery.CONDITIONS[-1] else "")
         rows.append((label, int(cands.loc[met, "sent_id"].nunique())))
     return pd.DataFrame(rows, columns=["sentences with a candidate where …", "sentences"])
 
@@ -146,15 +145,13 @@ def summary_md(stage_counts: dict, cls: pd.DataFrame, cands: pd.DataFrame,
     by_query = pd.DataFrame([
         {"query": f"`{q}`", "parsed sentences": int(cls["queries"].map(lambda qs: qid in qs).sum()),
          "dependency query matches": int(cls.loc[cls["matches"], "queries"].map(lambda qs: qid in qs).sum()),
-         "strict": int(cls.loc[cls["strict"], "queries"].map(lambda qs: qid in qs).sum()),
          "matches anchored on this phrase": int(cands.loc[cands["matches"] & (cands["query"] == qid),
                                                           "sent_id"].nunique())}
         for qid, q, _ in QUERIES])
     near = cls[near_misses(cls)]
-    missing = pd.Series({k: int((~near[f"best_{k}"]).sum()) for k in depquery.REQUIRED},
+    missing = pd.Series({k: int((~near[f"best_{k}"]).sum()) for k in depquery.CONDITIONS},
                         name="near misses").rename_axis("condition not met").reset_index()
-    by_title = (cls.groupby("title").agg(parsed=("sent_id", "size"), matches=("matches", "sum"),
-                                         strict=("strict", "sum")))
+    by_title = (cls.groupby("title").agg(parsed=("sent_id", "size"), matches=("matches", "sum")))
     by_title = by_title.loc[sorted(by_title.index, key=title_sort_key)].reset_index()
     prov = cls[cls["identifier"] == PROVISION]
     out = ["# Sentences shaped like 8 U.S.C. § 1225(b)(2)(A): run summary", ""]
@@ -163,8 +160,9 @@ def summary_md(stage_counts: dict, cls: pd.DataFrame, cands: pd.DataFrame,
     out += ["## Dependency query, condition by condition", "",
             "Each row adds one condition; a sentence counts when one (phrase, if) candidate meets "
             "all conditions so far.", "", md_table(_funnel(cands, len(cls))), ""]
-    out += ["## Near misses (best candidate meets 3 of the 4 conditions of a match)", "",
-            md_table(missing), ""]
+    out += ["## Near misses", "",
+            "Best candidate has the provision's shape (phrase and if-clause modify the same head) "
+            "and meets 4 of the 5 conditions.", "", md_table(missing), ""]
     out += ["## By linear query", "",
             "A sentence can match several queries; the last column counts matches whose phrase is "
             "this query's.", "", md_table(by_query), ""]
@@ -174,8 +172,7 @@ def summary_md(stage_counts: dict, cls: pd.DataFrame, cands: pd.DataFrame,
         out += ["**Not found in the classified table.**", ""]
     for r in prov.itertuples():
         conds = ", ".join(f"{k} {'✓' if getattr(r, f'best_{k}') else '✗'}" for k in depquery.CONDITIONS)
-        out += [f"- `{r.sent_id}`: matches = **{r.matches}**, strict = **{r.strict}** ({conds})", "",
-                f"  > {r.text}", ""]
+        out += [f"- `{r.sent_id}`: matches = **{r.matches}** ({conds})", "", f"  > {r.text}", ""]
     out += ["## Parse failures", "", f"{len(fails)} sentences were not parsed.", ""]
     if len(fails):
         out += [md_table(fails[["sent_id", "error"]].head(50)), ""]
