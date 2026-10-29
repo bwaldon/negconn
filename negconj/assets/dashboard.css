@@ -94,6 +94,9 @@ aside { border-right: 1px solid var(--rule); display: flex; flex-direction: colu
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
 
 .text { font: 17px/1.75 var(--font-text); max-width: 75ch; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 20px; }
+.text .ol { padding-left: calc(var(--d, 0) * 1.7em); }
+.text .ol + .ol { margin-top: 4px; }
+.text .olnum { color: var(--muted); font: 500 .8em var(--font-mono); }
 .text details { margin-top: 10px; font: 13px/1.5 var(--font-ui); color: var(--muted); }
 .text details p { font: 14px/1.6 var(--font-text); color: var(--ink); margin: 6px 0 0; }
 

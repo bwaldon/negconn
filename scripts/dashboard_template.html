@@ -97,7 +97,7 @@ const NEG = {
     META[conn] = d;
     d.rows.forEach((r, n) => ROWS.push({ ds: conn, n, key: conn + "|" + r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3],
       toks: r[4].split(" "), tree: null, flagged: r[5], relaxed: r[6], pairs: r[7].map(p => ({ not: p[0], and: p[1], notParent: p[2],
-      notRelaxedParent: p[3], coord: p[4], conj: p[5], dist: p[6], strict: p[7], rel: p[8], inIf: p[9] })) }));
+      notRelaxedParent: p[3], coord: p[4], conj: p[5], dist: p[6], strict: p[7], rel: p[8], inIf: p[9] })), breaks: r[8] || [] }));
   },
   trees(conn, title, map) { TREES[conn + "|" + title] = map; },
 };
@@ -268,7 +268,8 @@ function renderDetail() {
   const vp = nodes && p.strict ? nodes.negVP : null;
   const ifc = p ? ifClauseOf(r, p) : null;
   const inVP = i => vp && i >= vp.lo && i <= vp.hi, inCo = i => nodes && i >= nodes.coord.lo && i <= nodes.coord.hi;
-  const textHtml = r.toks.map((w, i) => {
+  const parts = [], gaps = [];
+  r.toks.forEach((w, i) => {
     const cls = [];
     if (inVP(i)) cls.push("t-vp");
     if (inCo(i)) cls.push("t-coord");
@@ -277,11 +278,12 @@ function renderDetail() {
     let tok = cls.length ? `<span class="${cls.join(" ")}">${esc(word(w))}</span>` : esc(word(w));
     if (ifc && i === ifc.lo) tok = `<span class="t-if">⟦</span>` + tok;
     if (ifc && i === ifc.hi) tok = tok + `<span class="t-if">⟧</span>`;
-    if (i === r.toks.length - 1) return tok;
+    parts.push(tok);
     // the space after a token joins the shading when both neighbours share it
     const sc = [inVP(i) && inVP(i + 1) ? "t-vp" : "", inCo(i) && inCo(i + 1) ? "t-coord" : ""].filter(Boolean);
-    return tok + (sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
-  }).join("");
+    gaps.push(sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
+  });
+  const textHtml = layoutText(parts, gaps, r.breaks);
   const strictN = r.pairs.filter(q => q.strict).length;
   const pairRows = r.pairs.map((q, i) => {
     const a = Math.max(0, q.not - 2), b = Math.min(r.toks.length, q.not + 3), c = Math.max(0, q.and - 2), d = Math.min(r.toks.length, q.and + 3);

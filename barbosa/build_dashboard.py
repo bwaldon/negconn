@@ -4,7 +4,8 @@
 
 Every parsed sentence is included (the page filters to dependency-query matches by default).
 Writes ``{out}/index.html`` plus ``data/index.js`` (sentences, linear queries, the dependency
-query's candidates: everything filtering and the text view need) and ``data/parses-{title}.js``
+query's candidates, where a condensed chapeau's lines start: everything filtering and the text
+view need) and ``data/parses-{title}.js``
 (CoNLL-U, loaded when a sentence is opened). Published as bwaldon.github.io/negconn/1225b,
 next to the negated-connectives dashboard.
 """
@@ -17,6 +18,7 @@ from pathlib import Path
 import pandas as pd
 
 from negconj.dashboard import manifest_meta, render_page, write_call
+from negconj.outline import load_outlines, sentence_breaks
 from negconj.util import title_sort_key
 
 from .depquery import CONDITIONS, REQUIRED, read_conllu
@@ -41,15 +43,18 @@ def build(results: Path, out: Path) -> dict:
     cands = pd.read_parquet(results / "candidates.parquet")
     fails = pd.read_parquet(results / "failures.parquet")
     by_sent = {sid: g for sid, g in cands.groupby("sent_id", sort=False)}
+    outlines = load_outlines(results, set(cls["unit_id"]))
     rows, parses = [], {}
     for r in cls.itertuples(index=False):
         words = [w.form for w in read_conllu(r.conllu).words]
+        unit_text, outline = outlines.get(r.unit_id, ("", None))
         cs = [[QUERY_INDEX[c.query], *(int(getattr(c, k)) for k in ROLE_COLUMNS),
                _spans(c.mods1), _spans(c.mods2), _bits(c._asdict())]
               for c in by_sent[r.sent_id].itertuples(index=False)] if r.sent_id in by_sent else []
         rows.append([r.sent_id, str(r.title), r.identifier, r.elem_source, " ".join(words),
                      [QUERY_INDEX[q] for q in r.queries], bool(r.matches), bool(r.strict),
-                     int(r.best_n_met), int(r.best), cs])
+                     int(r.best_n_met), int(r.best), cs,
+                     sentence_breaks(outline, unit_text, r.text, words)])
         parses.setdefault(str(r.title), {})[r.sent_id] = r.conllu
     d = out / "data"
     meta = {"run": results.resolve().name, "manifest": manifest_meta(results), "provision": PROVISION,
@@ -62,6 +67,7 @@ def build(results: Path, out: Path) -> dict:
     render_page(HERE / "dashboard_template.html", out / "index.html", ["1225b"])
     sizes = {p.name: p.stat().st_size for p in d.iterdir()}
     return {"rows": len(rows), "matches": int(cls["matches"].sum()), "strict": int(cls["strict"].sum()),
+            "outlined": sum(bool(r[-1]) for r in rows),
             "index_mb": sizes["index.js"] / 1e6,
             "parses_mb": sum(v for k, v in sizes.items() if k.startswith("parses")) / 1e6}
 

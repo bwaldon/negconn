@@ -4,8 +4,9 @@
     python scripts/build_dashboard.py --and results_pilot --out site_pilot
 
 Only flagged sentences are included. Writes ``{out}/index.html`` plus, per dataset, ``data/{conn}/index.js`` (sentences, flags and
-(not, connective) pairs: everything filtering and search need) and ``data/{conn}/trees-{title}.js``
-(trees, loaded when a sentence is opened). The files are plain scripts, so the site works from
+(not, connective) pairs: everything filtering and search need; for a condensed chapeau, where its
+lines start, negconj.outline) and ``data/{conn}/trees-{title}.js`` (trees, loaded when a sentence is
+opened). The files are plain scripts, so the site works from
 GitHub Pages and when opened from disk. Review marks are kept in the browser's localStorage and
 can be exported as CSV from the page.
 """
@@ -20,6 +21,7 @@ from nltk.tree import ParentedTree
 
 from negconj.classify import is_preterminal
 from negconj.dashboard import manifest_meta, render_page, write_call
+from negconj.outline import load_outlines, sentence_breaks
 from negconj.util import title_sort_key
 
 HERE = Path(__file__).resolve().parent
@@ -71,16 +73,20 @@ def build_dataset(conn: str, results: Path, out: Path) -> dict:
     pcols = ["not_index", cc, "not_parent_label", "not_relaxed_parent_label",
              "coord_label", "n_conjuncts", "tree_distance", "c2_strict", "c2_relaxed"]
     by_sent = {sid: g[pcols].values.tolist() for sid, g in pairs.groupby("sent_id", sort=False)}
+    outlines = load_outlines(results, set(cls["unit_id"]))
     rows, trees = [], {}
-    n_if = 0
+    n_if = n_outlined = 0
     for r in cls.itertuples(index=False):
         ps = by_sent.get(r.sent_id, [])
         ifs = in_if_flags(r.tree, [(int(p[0]), int(p[1])) for p in ps])
         n_if += any(f and p[7] for f, p in zip(ifs, ps))
+        unit_text, outline = outlines.get(r.unit_id, ("", None))
+        breaks = sentence_breaks(outline, unit_text, r.text, list(r.tokens))
+        n_outlined += bool(breaks)
         rows.append([r.sent_id, str(r.title), r.identifier, r.elem_source, " ".join(r.tokens),
                      bool(r.flagged), bool(r.flagged_relaxed),
                      [[int(p[0]), int(p[1]), p[2], p[3], p[4], int(p[5]), int(p[6]), bool(p[7]), bool(p[8]), f]
-                      for p, f in zip(ps, ifs)]])
+                      for p, f in zip(ps, ifs)], breaks])
         trees.setdefault(str(r.title), {})[r.sent_id] = r.tree
     d = out / "data" / conn
     d.mkdir(parents=True, exist_ok=True)
@@ -91,7 +97,7 @@ def build_dataset(conn: str, results: Path, out: Path) -> dict:
     for title, tmap in trees.items():
         write_call(d / f"trees-{title}.js", "NEG.trees", conn, title, tmap)
     sizes = {p.name: p.stat().st_size for p in d.iterdir()}
-    return {"conn": conn, "rows": len(rows), "flagged_with_strict_if_pair": n_if,
+    return {"conn": conn, "rows": len(rows), "flagged_with_strict_if_pair": n_if, "outlined": n_outlined,
             "index_mb": sizes["index.js"] / 1e6, "trees_mb": sum(v for k, v in sizes.items()
                                                                if k.startswith("trees")) / 1e6}
 

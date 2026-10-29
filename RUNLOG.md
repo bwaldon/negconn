@@ -361,3 +361,16 @@ Also a mis-coordination: 29/214(d).
   ≥ 24 GB, as the 4,000-token cap assumes). Cancelling the orchestrator left its queued shard calls
   in the backlog, so the app was stopped (`modal app stop negconj --yes`) before redeploying; the
   relaunch resumes from the extraction and plan already on the Volume.
+
+## Dashboards: nested layout for condensed chapeaus (2026-10-29)
+- `negconj/outline.py` recovers a condensed unit's structure from the extraction tables: its
+  elements (chapeau, items, continuations) are listed in document order, each with an
+  @identifier, and each appears verbatim in both `text_parse` and `text_display`. Depth = levels
+  below the unit's identifier; label = the numbers between elements in `text_display` ("(ii)", or
+  "(A) (i)", placed at (A)'s depth). All **78,963** condensed units in release 119-121 get an
+  outline (no element left unplaced).
+- Each dashboard row now carries where its sentence's lines start (`[word index, depth, label]`),
+  and the shared `layoutText` (negconj/assets) draws them as indented lines with their numbers.
+  Sentences with an outline: 7,086 of 13,246 (*and*), 13,108 of 28,623 (*or*), 1,406 of 1,987
+  (1225b). Flat units are drawn as before. Pulsifer shows (1) with (A)–(C) under it, then (2)–(5).
+- Rebuilt locally (`site/`, `site/1225b/`); the live sites change when `gh-pages` is updated.

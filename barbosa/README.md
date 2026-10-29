@@ -15,8 +15,9 @@ Which other U.S. Code provisions share this structure?
 **Dashboard:** <https://bwaldon.github.io/negconn/1225b/>. Every sentence the RA's linear queries
 find, with its dependency parse. By default the list shows the sentences the dependency query
 matches; it can also show only strict matches, near misses (three of the four conditions of a
-match) or everything, filtered by the condition not met, the RA's query, title, unit type or text. Review marks are saved in the
-browser and can be exported as CSV.
+match) or everything, filtered by the condition not met, the RA's query, title, unit type or text. Condensed chapeaus are laid out with
+their nested structure ((1), (A), (i), …). Review marks are saved in the browser and can be
+exported as CSV.
 
 ## Method
 

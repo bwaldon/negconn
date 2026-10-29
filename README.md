@@ -9,7 +9,8 @@ Champollion et al. amicus brief in *Campos-Chaves v. Garland* (Nos. 22-674 & 22-
 **Dashboard:** <https://bwaldon.github.io/negconn/>. All 41,869 flagged sentences from both runs,
 with their trees. Pick a connective (*and*, *or*, or both) and search or filter by text, citation,
 title, unit type, coordination label and position (e.g. inside an *if*-clause, with *not* and the
-coordination both in it). Review marks can be saved in the browser and exported as CSV. The pages
+coordination both in it). A condensed chapeau is laid out with its nested structure ((1), (A), (i),
+…), recovered from the extraction tables (`negconj/outline.py`). Review marks can be saved in the browser and exported as CSV. The pages
 load per-title tree files on demand, so the site also works opened from disk
 (`site/index.html` after building).
 

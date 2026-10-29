@@ -33,6 +33,17 @@ function titleOptions(titles) {
   return [...titles].sort(cmpTitle).map(t => `<option value="${esc(t)}">Title ${esc(t.replace(/^0+/, ""))}</option>`).join("");
 }
 
+/* ---------- condensed chapeaus, laid out as their nested structure (negconj.outline) ---------- */
+// parts[i] is word i's HTML and gaps[i] the HTML of the space after it; breaks are [word index,
+// depth, label] where a line of the outline starts. Without breaks the sentence is one paragraph.
+function layoutText(parts, gaps, breaks) {
+  const run = (a, b) => parts.slice(a, b).map((p, k) => p + (a + k < b - 1 ? gaps[a + k] : "")).join("");
+  if (!breaks || !breaks.length) return run(0, parts.length);
+  const bs = breaks[0][0] > 0 ? [[0, breaks[0][1], ""], ...breaks] : breaks;
+  return bs.map(([start, depth, label], k) => `<div class="ol" style="--d:${depth}">` +
+    (label ? `<span class="olnum">${esc(label)}</span> ` : "") + run(start, k + 1 < bs.length ? bs[k + 1][0] : parts.length) + `</div>`).join("");
+}
+
 /* ---------- text width (for drawing) ---------- */
 let measureCtx;
 function tw(s, font = "12px 'IBM Plex Mono', monospace") { measureCtx = measureCtx || document.createElement("canvas").getContext("2d"); measureCtx.font = font; return measureCtx.measureText(s).width; }

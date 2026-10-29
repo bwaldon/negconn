@@ -111,7 +111,7 @@ const DEP = {
   index(d) {
     META = d;
     ROWS = d.rows.map((r, n) => ({ n, key: r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3], words: r[4].split(" "),
-      queries: r[5], matches: r[6], strict: r[7], nMet: r[8], best: r[9], conllu: null,
+      queries: r[5], matches: r[6], strict: r[7], nMet: r[8], best: r[9], breaks: r[11] || [], conllu: null,
       cands: r[10].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
         n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], met: d.conditions.map((_, k) => !!(c[13] & (1 << k))) })) }));
     ROWS.forEach(r => { const c = r.cands[r.best]; r.near = !r.matches && !!c && c.met.slice(0, d.n_required).filter(Boolean).length === d.n_required - 1; });
@@ -287,17 +287,19 @@ function renderDetail() {
     : r.near ? `<span class="pill near">Near miss · ${nReq} of ${req}</span>` : `<span class="pill none">${nReq} of ${req}</span>`;
   const lii = liiUrl(r.ident);
   const has = (i, k) => cls[i].has(k);
-  const textHtml = r.words.map((w, i) => {
+  const parts = [], gaps = [];
+  r.words.forEach((w, i) => {
     const k = [];
     if (has(i, "frame")) k.push("t-frame"); if (has(i, "m1")) k.push("t-m1"); if (has(i, "m2")) k.push("t-m2");
     if (has(i, "n1")) k.push("t-n1"); if (has(i, "n2")) k.push("t-n2"); if (has(i, "if")) k.push("t-if"); if (has(i, "gov")) k.push("t-gov");
     let tok = k.length ? `<span class="${k.join(" ")}">${esc(w)}</span>` : esc(w);
     if (ifSpan && i === ifSpan[0]) tok = `<span class="t-brk">⟦</span>` + tok;
     if (ifSpan && i === ifSpan[1]) tok = tok + `<span class="t-brk">⟧</span>`;
-    if (i === r.words.length - 1) return tok;
-    const sc = ["m1", "m2", "frame"].filter(x => has(i, x) && has(i + 1, x)).map(x => "t-" + x);
-    return tok + (sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
-  }).join("");
+    parts.push(tok);
+    const sc = ["m1", "m2", "frame"].filter(x => has(i, x) && i + 1 < r.words.length && has(i + 1, x)).map(x => "t-" + x);
+    gaps.push(sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
+  });
+  const textHtml = layoutText(parts, gaps, r.breaks);
   const conds = c ? condText(r, P, c) : {};
   const candRows = r.cands.map((x, i) => {
     const ctx = (a, b, hi, col) => r.words.slice(Math.max(0, a), Math.min(r.words.length, b)).map((w, k) => hi.includes(Math.max(0, a) + k) ? `<span style="color:var(--${col});font-weight:600">${esc(w)}</span>` : esc(w)).join(" ");
