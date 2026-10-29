@@ -319,3 +319,45 @@ Also a mis-coordination: 29/214(d).
   dashboard at <https://bwaldon.github.io/negconn/>. The old repository `bwaldon/negconj` now holds
   only a notice (README on `main`, a one-page site on `gh-pages`) pointing to the new location.
   The package, Modal app and Volume keep the `negconj` names.
+
+## Shared study pipeline; the 1225b study (2026-10-29)
+- **Studies.** `negconj/study.py`: a run carries out one study, named by a string (`and`, `or`,
+  `1225b`), which supplies the unit prefilter patterns, the sentence regex, the parser
+  configuration and its own classify and report stages. `--study` replaces `--conn` in
+  `scripts/launch.py`, `scripts/run_local.py` and every Modal function. The negated-connective
+  specifics (regexes, `classify_stage`, summary, limitations, review sample, regression cases)
+  moved to `negconj/connectives.py`; `segment`, `shards`, `stages` and `report` are study-agnostic.
+  `conn="and"`/`"or"` runs are unchanged in substance; the classify stage now reports
+  `not_{conn}_pairs` itself (it used to be renamed in the orchestrator).
+- **Parser kinds.** `negconj/parse.py` gives constituency output (tree, xpos) or dependency output
+  (one CoNLL-U string) from the same sub-batching / OOM / CPU-fallback core; `run_shard` writes
+  whatever columns the parser declares. New config `electra-dep` (Stanza's default_accurate
+  for these processors): pos `combined_electra-large`, lemma `combined_charlm`, depparse
+  `combined_electra-large`; the Modal image gained a layer with the lemma and depparse models.
+- **Finding: extra processors.** `build_pipeline` passed a processors dict without
+  `package=None`, so Stanza also loaded and ran its default lemma, depparse, NER and sentiment
+  models on every sentence of the conjunction and disjunction runs. Trees did not depend on
+  them: with `package=None` (now the code) 12/12 sampled Title 8 sentences give byte-identical
+  trees and xpos, and the same `model_package` string. Future constituency runs do less work.
+- **Shared helpers.** `negconj/util.py` (atomic writes, JSONL, SHA-256 and checksums, title order,
+  markdown tables; the copy of `sha256` in `download.py` is gone). Dashboards: `negconj/dashboard.py`
+  (page assembly, data-file writing, manifest fields) and `negconj/assets/dashboard.{css,js}`
+  (theme, layout, citations, review storage, CSV export, keyboard), inlined into each page at build
+  time so every page stays self-contained. Rebuilt negconn site: `data/` byte-identical to the
+  21 Oct build; rendered page identical apart from tree coordinates, which vary between two
+  renders of the old page too (web-font timing). One layout fix in the shared CSS: wide tables and
+  trees now scroll inside their own boxes instead of widening the detail pane (seen on the negconn
+  pairs table); the live negconn site picks it up at its next build.
+- **Stale code removed.** `scripts/checkpoint.py` (Phase 1), the pilot-only `measure_extract`
+  Modal function and `--measure-extract`, unused aliases (`MATCH_RE`, `PAIR_COLUMNS`, `and_ccs`,
+  `LIMITATIONS`, `pulsifer_rows`, `DEFAULT_RELEASE`, `parse.gpu_available`).
+- **Release.** OLRC's download page now lists 119-136 as current, but its all-titles zip URL
+  returned 404 (first 1225b launch, call fc-01M64EP6QW3P038GHN5PB7WR0B, failed in `download`).
+  The 1225b run is pinned to **119-121** (`--release`), the release of both negconn runs.
+- The 1225b study itself is logged in `barbosa/RUNLOG.md`.
+- **GPU fallback.** The relaunch (call fc-01M64EX0GFMWANM9R7SMZM205Z) extracted and planned, then
+  waited ~20 min with all 10 shard calls queued and no L4 assigned. User decision: `process_shard`
+  now asks for `["L4", "A10G", "L40S"]` (Modal takes the first type with capacity; all have
+  ≥ 24 GB, as the 4,000-token cap assumes). Cancelling the orchestrator left its queued shard calls
+  in the backlog, so the app was stopped (`modal app stop negconj --yes`) before redeploying; the
+  relaunch resumes from the extraction and plan already on the Volume.

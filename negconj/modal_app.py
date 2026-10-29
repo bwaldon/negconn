@@ -27,6 +27,10 @@ VOLUME_NAME = "negconj-data"
 DATA = Path("/data")
 STANZA_DIR = "/opt/stanza_resources"
 MAX_GPU_CONTAINERS = 10  # Starter plan GPU concurrency; v2 Volume
+# GPU types for process_shard, in order of preference: Modal takes the first with capacity.
+# L4 ran both negconn runs; the fallbacks have at least its 24 GB, so MAX_GPU_TOKENS still fits.
+# Each shard records the GPU it ran on (manifest "shards" and "gpu_type").
+GPU_TYPES = ["L4", "A10G", "L40S"]
 # Matches longer than this are not parsed (user decision, 2026-10-21). The full run
 # parsed every match up to 3,857 tokens on an L4; the ones that stalled it (5,215-19,468
 # tokens) ran the GPU out of memory, then the CPU fallback out of the container's memory,
@@ -146,7 +150,7 @@ def plan_shards(run: str, target_chars: int, titles: list[str] | None = None,
 _MODELS: dict = {}
 
 
-@app.function(volumes=VOLS, gpu="L4", timeout=2 * 3600, retries=3,
+@app.function(volumes=VOLS, gpu=GPU_TYPES, timeout=2 * 3600, retries=3,
               max_containers=MAX_GPU_CONTAINERS)
 def process_shard(run: str, shard_id: str, min_matches: int = 32, study: str = "and",
                   max_tokens: int | None = MAX_GPU_TOKENS, reuse_run: str | None = None) -> dict:

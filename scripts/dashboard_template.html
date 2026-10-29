@@ -7,137 +7,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <style>
-/* Layout: a working desk. Sentence list on the left, the selected sentence read like a statute
-   page on the right, its tree drawn below. Red marks negation, indigo marks conjunction. */
-:root {
-  --paper: #f5f7f6;
-  --surface: #ffffff;
-  --ink: #1b2320;
-  --muted: #5b6862;
-  --rule: #d8dfdb;
-  --accent: #23695a;
-  --accent-soft: #e2efeb;
-  --neg: #b3262f;
-  --neg-soft: #f8e4e5;
-  --conj: #3346b8;
-  --conj-soft: #e6e9fa;
-  --warn: #8a5a00;
-  --warn-soft: #f6ecd6;
-  --font-text: "Source Serif 4", "Iowan Old Style", Georgia, serif;
-  --font-ui: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #111614; --surface: #19201d; --ink: #e3e9e6; --muted: #97a39d; --rule: #2b3531;
-    --accent: #72c2ab; --accent-soft: #1d322c; --neg: #ff7f86; --neg-soft: #3a1d20;
-    --conj: #9daaff; --conj-soft: #22264a; --warn: #e2b55a; --warn-soft: #362a12; color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #111614; --surface: #19201d; --ink: #e3e9e6; --muted: #97a39d; --rule: #2b3531;
-  --accent: #72c2ab; --accent-soft: #1d322c; --neg: #ff7f86; --neg-soft: #3a1d20;
-  --conj: #9daaff; --conj-soft: #22264a; --warn: #e2b55a; --warn-soft: #362a12; color-scheme: dark;
-}
-* { box-sizing: border-box; }
-html, body { height: 100%; }
-body {
-  margin: 0; background: var(--paper); color: var(--ink);
-  font: 14px/1.45 var(--font-ui);
-  display: grid; grid-template-rows: auto 1fr;
-}
-button, input, select, textarea { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-header.top {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px;
-  padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px));
-  padding-right: max(16px, env(safe-area-inset-right, 0px));
-  border-bottom: 1px solid var(--rule); background: var(--surface);
-}
-header.top h1 { margin: 0; font: 600 17px/1.2 var(--font-ui); letter-spacing: .01em; }
-header.top h1 em { font-style: normal; color: var(--neg); }
-header.top h1 b { font-weight: 600; color: var(--conj); }
-.runmeta { color: var(--muted); font: 12px var(--font-mono); }
-
-main { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; min-height: 0; }
-@media (max-width: 860px) { main { grid-template-columns: 1fr; } body { height: auto; } }
-
-/* ---------- list ---------- */
-aside { border-right: 1px solid var(--rule); display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
-.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
-.filters label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; min-width: 0; }
-.filters input, .filters select { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; padding: 5px 7px; min-width: 0; }
-.filters .wide { grid-column: 1 / -1; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; grid-column: 1 / -1; }
-.chip { border: 1px solid var(--rule); background: var(--paper); border-radius: 999px; padding: 1px 8px; font: 12px var(--font-mono); cursor: pointer; }
-.chip[aria-pressed="true"] { background: var(--conj-soft); border-color: var(--conj); color: var(--conj); }
-.chip .c { color: var(--muted); margin-left: 4px; }
-.count { padding: 6px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--rule); display: flex; justify-content: space-between; gap: 8px; }
-.count button { background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-size: 12px; }
-#list { overflow-y: auto; flex: 1; min-height: 0; }
-.row { display: grid; gap: 3px; padding: 9px 16px; border-bottom: 1px solid var(--rule); cursor: pointer; border-left: 3px solid transparent; }
-.row:hover { background: var(--paper); }
-.row[aria-selected="true"] { background: var(--accent-soft); border-left-color: var(--accent); }
-.row .cite { display: flex; gap: 8px; align-items: baseline; font: 12px var(--font-mono); }
-.row .cite .rv { margin-left: auto; font-size: 11px; }
-.row .snip { font: 14px/1.4 var(--font-text); color: var(--ink); overflow-wrap: anywhere; }
-.row .snip .gap { color: var(--muted); }
+/*__DASHBOARD_CSS__*/
+/* not … and/or: red marks negation, indigo the connective, green an if-clause. */
 .row .conn { font: 600 11px var(--font-mono); color: var(--conj); border: 1px solid var(--conj); border-radius: 3px; padding: 0 4px; }
-.loading { color: var(--muted); padding: 20px 16px; }
 .also { font-size: 12px; color: var(--muted); }
 .also button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; text-decoration: underline; }
-.more { margin: 10px 16px; padding: 6px; width: calc(100% - 32px); border: 1px dashed var(--rule); background: none; border-radius: 4px; cursor: pointer; color: var(--accent); }
-
-/* ---------- detail ---------- */
-#detail { overflow-y: auto; min-height: 0; padding-block: 18px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.inner { max-width: 1100px; display: grid; gap: 18px; }
-.dhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
-.dhead h2 { margin: 0; font: 600 22px/1.2 var(--font-text); text-wrap: balance; }
-.pill { font: 500 11px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
-.pill.flag { color: var(--neg); background: var(--neg-soft); }
-.pill.none { color: var(--muted); }
-.meta { color: var(--muted); font: 12px var(--font-mono); display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.meta a { color: var(--accent); }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
-.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
 .legend .l-neg::before { background: var(--neg); }
 .legend .l-vp::before { background: var(--neg-soft); border: 1px solid var(--neg); }
 .legend .l-conj::before { background: var(--conj); }
 .legend .l-coord::before { border-bottom: 2px solid var(--conj); height: 6px; }
 .legend .l-if::before { content: "⟦ ⟧"; width: auto; height: auto; color: var(--accent); font-weight: 700; }
-
-.text { font: 17px/1.75 var(--font-text); max-width: 75ch; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 20px; }
 .text .t-vp { background: var(--neg-soft); }
 .text .t-coord { box-shadow: inset 0 -2px 0 var(--conj); }
 .text .t-not { color: var(--neg); font-weight: 600; }
 .text .t-and { color: var(--conj); font-weight: 600; }
 .text .t-if { color: var(--accent); font-weight: 700; font-family: var(--font-ui); }
-.text details { margin-top: 10px; font: 13px/1.5 var(--font-ui); color: var(--muted); }
-.text details p { font: 14px/1.6 var(--font-text); color: var(--ink); margin: 6px 0 0; }
-
-h3 { margin: 0 0 8px; font: 600 12px var(--font-ui); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
-table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
-th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--rule); white-space: nowrap; }
-th { font-weight: 500; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
-tbody tr { cursor: pointer; }
-tbody tr:hover { background: var(--paper); }
-tbody tr[aria-selected="true"] { background: var(--accent-soft); }
-td.ctx { font-family: var(--font-text); white-space: normal; min-width: 220px; max-width: 380px; }
-td .yes { color: var(--neg); font-weight: 600; }
-td .no { color: var(--muted); }
-td.mono { font-family: var(--font-mono); }
-
-.treebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
-.treebar h3 { margin: 0; }
-.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 5px; overflow: hidden; }
-.seg button { border: 0; background: var(--surface); padding: 4px 10px; cursor: pointer; font-size: 12px; }
-.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
-.btn { border: 1px solid var(--rule); background: var(--surface); border-radius: 5px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
-.hint { color: var(--muted); font-size: 12px; }
-.treebox { overflow: auto; max-height: 70vh; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 10px; }
 svg.tree text { font-family: var(--font-mono); font-size: 12px; fill: var(--ink); }
 svg.tree .lbl { fill: var(--muted); font-weight: 500; }
 svg.tree line, svg.tree path.edge { stroke: var(--rule); stroke-width: 1.2; fill: none; }
@@ -153,7 +37,6 @@ svg.tree .coord text { fill: var(--conj); }
 svg.tree .lca text.lbl { text-decoration: underline; }
 svg.tree .ifc rect { fill: var(--accent-soft); stroke: var(--accent); }
 svg.tree .ifc text { fill: var(--accent); }
-
 .outline { font: 12.5px/1.6 var(--font-mono); }
 .outline details { margin-left: 14px; }
 .outline > details { margin-left: 0; }
@@ -170,15 +53,6 @@ svg.tree .ifc text { fill: var(--accent); }
 .outline .o-and { color: var(--conj); font-weight: 600; }
 .outline .o-negvp > summary .lb { color: var(--neg); background: var(--neg-soft); padding: 0 3px; border-radius: 2px; }
 .outline .o-coord > summary .lb { color: var(--conj); background: var(--conj-soft); padding: 0 3px; border-radius: 2px; }
-
-.review { display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
-.review .marks { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.review .marks button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
-.review textarea { width: 100%; min-height: 54px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); padding: 6px 8px; resize: vertical; }
-.review .foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
-kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--paper); }
-.empty { color: var(--muted); padding: 40px 0; }
-@media (prefers-reduced-motion: no-preference) { .row { transition: background .12s; } }
 </style>
 </head>
 <body>
@@ -209,11 +83,14 @@ kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-
   <section id="detail" aria-live="polite"><div class="inner"><p class="empty">Select a sentence.</p></div></section>
 </main>
 <script>
+/*__DASHBOARD_JS__*/
+</script>
+<script>
 /* Data: per connective, data/{conn}/index.js (sentences, flags, pairs) loaded at start, and
    data/{conn}/trees-{title}.js loaded when a sentence of that title is opened. Plain script
    files, so this page also works when opened from disk. */
 const DATASETS = /*__DATASETS__*/[];
-const META = {}, TREES = {}, PENDING = {};
+const META = {}, TREES = {};
 let ROWS = [];
 const NEG = {
   index(conn, d) {
@@ -224,11 +101,6 @@ const NEG = {
   },
   trees(conn, title, map) { TREES[conn + "|" + title] = map; },
 };
-function loadScript(src) {
-  if (PENDING[src]) return PENDING[src];
-  return PENDING[src] = new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok;
-    s.onerror = () => { delete PENDING[src]; fail(new Error("could not load " + src)); }; document.head.appendChild(s); });
-}
 async function ensureTree(r) {
   if (r.tree) return;
   const k = r.ds + "|" + r.title;
@@ -236,23 +108,6 @@ async function ensureTree(r) {
   r.tree = TREES[k][r.id];
 }
 const CONN = { and: { word: "and", label: "Negative conjunction", short: "negconj" }, or: { word: "or", label: "Negative disjunction", short: "negdisj" } };
-const BRK = { "-LRB-": "(", "-RRB-": ")", "-LSB-": "[", "-RSB-": "]", "-LCB-": "{", "-RCB-": "}" };
-const word = w => BRK[w] || w;
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const $ = id => document.getElementById(id);
-
-/* ---------- citation helpers ---------- */
-function citation(ident) {
-  const m = /^\/us\/usc\/t(\w+)\/s([^/]+)((?:\/[^/]+)*)$/.exec(ident);
-  if (!m) return ident || "(no identifier)";
-  const sub = m[3].split("/").filter(Boolean).map(x => `(${x})`).join("");
-  const t = m[1].replace(/^0+/, "");
-  return `${t.endsWith("a") ? t.slice(0, -1) + " U.S.C. App." : t + " U.S.C."} § ${m[2]}${sub}`;
-}
-function liiUrl(ident) {
-  const m = /^\/us\/usc\/t(\d+)\/s([^/]+)/.exec(ident);
-  return m ? `https://www.law.cornell.edu/uscode/text/${+m[1]}/${m[2].replace(/–/g, "-")}` : null;
-}
 
 /* ---------- trees ---------- */
 const treeCache = new Map();
@@ -308,29 +163,23 @@ function ifPairs(row) {
 // Reviews are keyed "{conn}|{sent_id}". Marks made in the earlier single-dataset viewer (which
 // covered not … and only) are carried over once.
 const KEY = "negconj-review:v2";
-let reviews = {};
-try {
-  reviews = JSON.parse(localStorage.getItem(KEY) || "null");
-  if (!reviews) {
-    reviews = {};
-    for (const old of ["negconj-review:results_full_partial", "negconj-review:results"]) {
-      const o = JSON.parse(localStorage.getItem(old) || "{}"); for (const [id, v] of Object.entries(o)) reviews["and|" + id] = v;
-    }
+let reviews = loadReviews(KEY, () => {
+  const r = {};
+  for (const old of ["negconj-review:results_full_partial", "negconj-review:results"]) {
+    const o = JSON.parse(localStorage.getItem(old) || "{}"); for (const [id, v] of Object.entries(o)) r["and|" + id] = v;
   }
-} catch (e) { reviews = {}; }
-function saveReviews() { try { localStorage.setItem(KEY, JSON.stringify(reviews)); } catch (e) { /* storage unavailable */ } }
+  return r;
+});
+function saveReviews() { storeReviews(KEY, reviews); }
 const st = { ds: "", clause: "if", q: "", title: "", src: "", review: "", coord: "", limit: 300, sel: null, pair: 0, view: "focus", expandAll: false, open: new Set() };
 const byKey = new Map();
 const findRow = k => byKey.get(k);
 
 /* ---------- header + filters ---------- */
-function natKey(t) { const m = /^(\d+)(.*)$/.exec(t); return m ? [+m[1], m[2]] : [1e9, t]; }
 function setup() {
   // Both datasets interleaved by title, then citation, so a provision's and- and or-hits sit together;
   // within a dataset, document order.
-  const cmpIdent = (a, b) => a.localeCompare(b, undefined, { numeric: true });
-  ROWS.sort((a, b) => { const x = natKey(a.title), y = natKey(b.title);
-    return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || cmpIdent(a.ident, b.ident) || (a.ds < b.ds ? -1 : a.ds > b.ds ? 1 : a.n - b.n); });
+  ROWS.sort((a, b) => cmpTitle(a.title, b.title) || cmpIdent(a.ident, b.ident) || (a.ds < b.ds ? -1 : a.ds > b.ds ? 1 : a.n - b.n));
   ROWS.forEach(r => byKey.set(r.key, r));
   const ms = DATASETS.map(c => META[c]).filter(Boolean);
   const m0 = (ms[0] || {}).manifest || {};
@@ -338,8 +187,7 @@ function setup() {
   $("f-ds").innerHTML = (ms.length > 1 ? `<option value="">Both (and, or)</option>` : "") +
     ms.map(d => `<option value="${d.conn}">not … ${d.conn} · ${esc(d.label.toLowerCase())}</option>`).join("");
   st.ds = $("f-ds").value;
-  const titles = [...new Set(ROWS.map(r => r.title))].sort((a, b) => { const x = natKey(a), y = natKey(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : 1); });
-  $("f-title").insertAdjacentHTML("beforeend", titles.map(t => `<option value="${esc(t)}">Title ${esc(t.replace(/^0+/, ""))}</option>`).join(""));
+  $("f-title").insertAdjacentHTML("beforeend", titleOptions(new Set(ROWS.map(r => r.title))));
   const srcs = [...new Set(ROWS.map(r => r.src))].sort();
   $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
   $("chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; st.coord = st.coord === b.dataset.c ? "" : b.dataset.c; refresh(); });
@@ -379,7 +227,6 @@ function snippetFull(r) {
   const span = (a, b) => { const out = []; for (let i = Math.max(0, a); i < Math.min(r.toks.length, b); i++) { const c = mark(i); out.push(c ? `<span style="color:var(--${c});font-weight:600">${esc(word(r.toks[i]))}</span>` : esc(word(r.toks[i]))); } return out.join(" "); };
   return p.and - p.not <= 12 && p.and > p.not ? span(p.not - 4, p.and + 5) : span(p.not - 4, p.not + 5) + ` <span class="gap">…</span> ` + span(p.and - 4, p.and + 5);
 }
-const REVIEW_LABEL = { yes: "✓ yes", no: "✗ no", unsure: "? unsure" };
 
 let filtered = [];
 function refresh() {
@@ -491,16 +338,13 @@ function setMark(m) {
   if (row) { const old = row.querySelector(".rv"); if (old) old.remove(); const v = reviews[r.key].mark; if (v) row.insertAdjacentHTML("beforeend", `<span class="rv">${REVIEW_LABEL[v]}</span>`); }
 }
 function exportCsv() {
-  const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const q = csvCell;
   const lines = [["connective", "sent_id", "citation", "identifier", "flagged", "review", "notes"].join(",")];
   ROWS.forEach(r => { const v = reviews[r.key]; if (v && (v.mark || v.note)) lines.push([r.ds, q(r.id), q(citation(r.ident)), q(r.ident), r.flagged, q(v.mark || ""), q(v.note || "")].join(",")); });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
-  a.download = `negated_connective_reviews.csv`; document.body.appendChild(a); a.click(); a.remove();
+  downloadCsv("negated_connective_reviews.csv", lines);
 }
 
 /* ---------- pair view (SVG) ---------- */
-let measureCtx;
-function tw(s, font = "12px 'IBM Plex Mono', monospace") { measureCtx = measureCtx || document.createElement("canvas").getContext("2d"); measureCtx.font = font; return measureCtx.measureText(s).width; }
 function drawFocus(r, p, nodes) {
   const ifc = ifClauseOf(r, p);
   const top = ifc || nodes.top; const nLeaves = top.hi - top.lo + 1;
@@ -563,13 +407,11 @@ function drawOutline(r, p, nodes) {
 }
 
 /* ---------- keyboard ---------- */
-document.addEventListener("keydown", e => {
-  if (e.target.closest("input, textarea, select") || e.metaKey || e.ctrlKey || e.altKey) return;
+bindKeys(d => {
   const i = filtered.findIndex(r => r.key === st.sel);
-  if (e.key === "j" || e.key === "ArrowDown") { if (i < filtered.length - 1) { if (i + 1 >= st.limit) { st.limit += 300; refresh(); } select(filtered[i + 1].key); } e.preventDefault(); }
-  else if (e.key === "k" || e.key === "ArrowUp") { if (i > 0) select(filtered[i - 1].key); e.preventDefault(); }
-  else if (e.key === "1") setMark("yes"); else if (e.key === "2") setMark("no"); else if (e.key === "3") setMark("unsure");
-});
+  if (d > 0 && i < filtered.length - 1) { if (i + 1 >= st.limit) { st.limit += 300; refresh(); } select(filtered[i + 1].key); }
+  else if (d < 0 && i > 0) select(filtered[i - 1].key);
+}, setMark);
 
 Promise.allSettled(DATASETS.map(c => loadScript(`data/${c}/index.js`))).then(res => {
   const bad = res.map((x, i) => x.status === "rejected" ? DATASETS[i] : null).filter(Boolean);

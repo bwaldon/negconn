@@ -13,14 +13,14 @@ can be exported as CSV from the page.
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import pandas as pd
 from nltk.tree import ParentedTree
 
 from negconj.classify import is_preterminal
-from negconj.shards import title_sort_key
+from negconj.dashboard import manifest_meta, render_page, write_call
+from negconj.util import title_sort_key
 
 HERE = Path(__file__).resolve().parent
 LABELS = {"and": "Negative conjunction", "or": "Negative disjunction"}
@@ -61,20 +61,6 @@ def in_if_flags(tree_str: str, pairs: list[tuple[int, int]]) -> list[bool]:
     return out
 
 
-def _js(obj) -> str:
-    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False).replace("</", "<\\/")
-
-
-def _manifest(results: Path) -> dict:
-    mp = results / "RUN_MANIFEST.json"
-    if not mp.exists():
-        return {}
-    m = json.loads(mp.read_text())
-    out = {k: m.get(k) for k in ("release_point", "git_commit", "model_package", "gpu_type")}
-    out["partial"] = m.get("PARTIAL")
-    return out
-
-
 def build_dataset(conn: str, results: Path, out: Path) -> dict:
     cls = pd.read_parquet(results / "sentences_classified.parquet")
     pairs = pd.read_parquet(results / "pairs.parquet")
@@ -99,12 +85,11 @@ def build_dataset(conn: str, results: Path, out: Path) -> dict:
     d = out / "data" / conn
     d.mkdir(parents=True, exist_ok=True)
     meta = {"conn": conn, "label": LABELS[conn], "run": results.resolve().name,
-            "manifest": _manifest(results), "n_total": n_total,
+            "manifest": manifest_meta(results), "n_total": n_total,
             "titles": sorted(trees, key=title_sort_key)}
-    (d / "index.js").write_text(f"NEG.index({_js(conn)},{_js({**meta, 'rows': rows})});\n", encoding="utf-8")
+    write_call(d / "index.js", "NEG.index", conn, {**meta, "rows": rows})
     for title, tmap in trees.items():
-        (d / f"trees-{title}.js").write_text(f"NEG.trees({_js(conn)},{_js(title)},{_js(tmap)});\n",
-                                             encoding="utf-8")
+        write_call(d / f"trees-{title}.js", "NEG.trees", conn, title, tmap)
     sizes = {p.name: p.stat().st_size for p in d.iterdir()}
     return {"conn": conn, "rows": len(rows), "flagged_with_strict_if_pair": n_if,
             "index_mb": sizes["index.js"] / 1e6, "trees_mb": sum(v for k, v in sizes.items()
@@ -114,9 +99,7 @@ def build_dataset(conn: str, results: Path, out: Path) -> dict:
 def build(datasets: dict[str, Path], out: Path) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
     stats = [build_dataset(c, p, out) for c, p in datasets.items()]
-    html = (HERE / "dashboard_template.html").read_text(encoding="utf-8")
-    html = html.replace("/*__DATASETS__*/[]", _js(list(datasets)))
-    (out / "index.html").write_text(html, encoding="utf-8")
+    render_page(HERE / "dashboard_template.html", out / "index.html", list(datasets))
     return stats
 
 

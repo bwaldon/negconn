@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>1225(b) Structure Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/*__DASHBOARD_CSS__*/
+/* 1225b: indigo marks the first indefinite noun phrase (N1) and its modifiers, red the repeated one
+   (N2) and its modifiers, green the if-clause. */
+header.top h1 i { font-style: normal; color: var(--accent); }
+header.top .btn { margin-left: auto; }
+.legend .l-frame::before { border-bottom: 2px solid var(--conj); height: 6px; }
+.legend .l-n1::before { background: var(--conj); }
+.legend .l-m1::before { background: var(--conj-soft); border: 1px solid var(--conj); }
+.legend .l-n2::before { background: var(--neg); }
+.legend .l-m2::before { background: var(--neg-soft); border: 1px solid var(--neg); }
+.legend .l-if::before { content: "⟦ ⟧"; width: auto; height: auto; color: var(--accent); font-weight: 700; }
+.legend .l-gov::before { border-bottom: 2px solid var(--ink); height: 6px; }
+.text .t-frame { box-shadow: inset 0 -2px 0 var(--conj); }
+.text .t-n1 { color: var(--conj); font-weight: 600; }
+.text .t-m1 { background: var(--conj-soft); }
+.text .t-n2 { color: var(--neg); font-weight: 600; }
+.text .t-m2 { background: var(--neg-soft); }
+.text .t-gov { font-weight: 600; box-shadow: inset 0 -2px 0 var(--ink); }
+.text .t-if { color: var(--accent); font-weight: 700; }
+.text .t-brk { color: var(--accent); font-weight: 700; font-family: var(--font-ui); }
+.pill.match { color: var(--accent); background: var(--accent-soft); }
+.pill.near { color: var(--warn); background: var(--warn-soft); }
+.conds { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.conds li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+.conds li:last-child { border-bottom: 0; }
+.conds .ok { color: var(--accent); font-weight: 700; }
+.conds .ko { color: var(--neg); font-weight: 700; }
+.conds .what { font-weight: 500; }
+.conds .why { grid-column: 2; color: var(--muted); font: 14px/1.5 var(--font-text); overflow-wrap: anywhere; }
+.conds .why q { color: var(--ink); quotes: "“" "”"; }
+.bits { font: 12px var(--font-mono); letter-spacing: 1px; }
+.bits .on { color: var(--accent); }
+.bits .off { color: var(--rule); }
+svg.dep text { font-family: var(--font-text); font-size: 13.5px; fill: var(--ink); }
+svg.dep text.pos { font: 10px var(--font-mono); fill: var(--muted); }
+svg.dep text.out { font: 10px var(--font-mono); fill: var(--muted); }
+svg.dep text.rel { font: 10px var(--font-mono); fill: var(--muted); }
+svg.dep rect.relbg { fill: var(--surface); }
+svg.dep path.arc { stroke: var(--rule); stroke-width: 1.2; fill: none; }
+svg.dep path.head { fill: var(--rule); }
+svg.dep .hot path.arc { stroke-width: 2; }
+svg.dep .hot text.rel { font-weight: 600; }
+svg.dep .c-n1 path.arc, svg.dep .c-n1 path.head { stroke: var(--conj); }
+svg.dep .c-n1 path.head, svg.dep .c-n1 text.rel { fill: var(--conj); }
+svg.dep .c-n2 path.arc { stroke: var(--neg); }
+svg.dep .c-n2 path.head, svg.dep .c-n2 text.rel { fill: var(--neg); }
+svg.dep .c-if path.arc { stroke: var(--accent); }
+svg.dep .c-if path.head, svg.dep .c-if text.rel { fill: var(--accent); }
+svg.dep .w-n1 text.form, svg.dep .w-frame text.form { fill: var(--conj); }
+svg.dep .w-n1 text.form, svg.dep .w-n2 text.form, svg.dep .w-if text.form, svg.dep .w-gov text.form { font-weight: 600; }
+svg.dep .w-n2 text.form { fill: var(--neg); }
+svg.dep .w-if text.form { fill: var(--accent); }
+svg.dep .w-gov text.form { text-decoration: underline; }
+svg.dep rect.span1 { fill: var(--conj-soft); }
+svg.dep rect.span2 { fill: var(--neg-soft); }
+svg.dep rect.spanif { fill: none; stroke: var(--accent); stroke-dasharray: 4 3; }
+details.conllu summary { cursor: pointer; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600; }
+details.conllu table td { font-family: var(--font-mono); font-size: 12px; }
+details.conllu tbody tr { cursor: default; }
+details.conllu tr.r-n1 td:nth-child(2) { color: var(--conj); font-weight: 600; }
+details.conllu tr.r-n2 td:nth-child(2) { color: var(--neg); font-weight: 600; }
+details.conllu tr.r-if td:nth-child(2) { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Shaped like 8 U.S.C. § 1225(b)(2)(A) · <b>in the case of an X</b> …, <i>if</i> … <em>an X</em> …</h1>
+  <span class="runmeta" id="runmeta"></span>
+  <button type="button" class="btn" id="go-prov">Open § 1225(b)(2)(A)</button>
+</header>
+<main>
+  <aside>
+    <div class="filters">
+      <label class="wide" for="f-dq">Dependency query<select id="f-dq"></select></label>
+      <label class="wide" for="f-miss">Condition not met<select id="f-miss"></select></label>
+      <label class="wide" for="f-lq">RA's linear query<select id="f-lq"></select></label>
+      <label for="f-title">Title<select id="f-title"><option value="">All titles</option></select></label>
+      <label for="f-src">Unit type<select id="f-src"><option value="">All</option></select></label>
+      <label class="wide" for="f-q">Search text or citation<input id="f-q" type="search" placeholder="e.g. alien, 1225"></label>
+      <label class="wide" for="f-review">My review<select id="f-review">
+        <option value="">Any</option><option value="none">Not reviewed</option>
+        <option value="yes">Yes (tracks 1225(b)(2)(A))</option><option value="no">No</option><option value="unsure">Unsure</option>
+      </select></label>
+    </div>
+    <div class="count"><span id="count"></span><button id="clear" type="button">Clear filters</button></div>
+    <div id="list" role="listbox" aria-label="Sentences"><p class="loading">Loading sentences…</p></div>
+  </aside>
+  <section id="detail" aria-live="polite"><div class="inner"><p class="empty">Select a sentence.</p></div></section>
+</main>
+<script>
+/*__DASHBOARD_JS__*/
+</script>
+<script>
+/* Data: data/index.js (sentences, the RA's queries each matches, the dependency query's candidates)
+   loaded at start, and data/parses-{title}.js (CoNLL-U) loaded when a sentence of that title is
+   opened. Word indices are 0-based positions in the CoNLL-U words. */
+const DATASETS = /*__DATASETS__*/[];
+let META = null, ROWS = [];
+const PARSES = {};
+const COND = ["frame_np", "if_outside", "same_governor", "repeated_np", "different_mods"];
+const DEP = {
+  index(d) {
+    META = d;
+    ROWS = d.rows.map((r, n) => ({ n, key: r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3], words: r[4].split(" "),
+      queries: r[5], matches: r[6], nMet: r[7], best: r[8], conllu: null,
+      cands: r[9].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
+        n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], met: COND.map((_, k) => !!(c[13] & (1 << k))) })) }));
+  },
+  parses(title, map) { PARSES[title] = map; },
+};
+async function ensureParse(r) {
+  if (r.conllu) return;
+  if (!PARSES[r.title]) await loadScript(`data/parses-${r.title}.js`);
+  r.conllu = PARSES[r.title][r.id];
+}
+
+/* ---------- CoNLL-U ---------- */
+const parseCache = new Map();
+function parseConllu(text) {
+  if (parseCache.has(text)) return parseCache.get(text);
+  const ws = [];
+  for (const line of text.split("\n")) {
+    const f = line.split("\t");
+    if (f.length < 8 || f[0].includes("-") || f[0].includes(".")) continue;
+    ws.push({ form: f[1], lemma: f[2], upos: f[3], xpos: f[4], feats: f[5], head: +f[6] - 1, rel: f[7] });
+  }
+  const kids = ws.map(() => []); ws.forEach((w, i) => { if (w.head >= 0) kids[w.head].push(i); });
+  const res = { ws, kids }; parseCache.set(text, res); return res;
+}
+function subtree(P, i) { const out = [], stack = [i]; while (stack.length) { const n = stack.pop(); out.push(n); stack.push(...P.kids[n]); } return out.sort((a, b) => a - b); }
+function span(P, i) { if (i < 0) return null; const s = subtree(P, i); return [s[0], s[s.length - 1]]; }
+
+/* ---------- state ---------- */
+const KEY = "1225b-review:v1";
+let reviews = loadReviews(KEY);
+function saveReviews() { storeReviews(KEY, reviews); }
+const st = { dq: "match", miss: "", lq: "", q: "", title: "", src: "", review: "", limit: 300, sel: null, cand: 0, view: "focus" };
+const byKey = new Map();
+const findRow = k => byKey.get(k);
+const bestCand = r => r.cands[r.best];
+const phraseLabel = q => `${META.queries[q][2]} a(n) … if … a(n)`;
+
+/* ---------- header + filters ---------- */
+function setup() {
+  ROWS.sort((a, b) => cmpTitle(a.title, b.title) || cmpIdent(a.ident, b.ident) || a.n - b.n);
+  ROWS.forEach(r => byKey.set(r.key, r));
+  const m = META.manifest || {};
+  $("runmeta").textContent = m.release_point ? "U.S. Code release " + m.release_point : "";
+  const nMatch = ROWS.filter(r => r.matches).length, nNear = ROWS.filter(r => !r.matches && r.nMet === 4).length;
+  $("f-dq").innerHTML = `<option value="match">Matches: all five conditions (${nMatch.toLocaleString()})</option>
+    <option value="near">Near misses: four of five (${nNear.toLocaleString()})</option>
+    <option value="">Every sentence a linear query found (${ROWS.length.toLocaleString()})</option>`;
+  $("f-miss").innerHTML = `<option value="">Any</option>` + META.conditions.map(([k, t], i) => `<option value="${i}">${esc(t)}</option>`).join("");
+  $("f-lq").innerHTML = `<option value="">Any of the nine</option>` + META.queries.map((q, i) => {
+    const n = ROWS.filter(r => r.queries.includes(i)).length;
+    return `<option value="${i}"${n ? "" : " disabled"}>${esc(phraseLabel(i))} (${n})</option>`;
+  }).join("");
+  $("f-title").insertAdjacentHTML("beforeend", titleOptions(new Set(ROWS.map(r => r.title))));
+  const srcs = [...new Set(ROWS.map(r => r.src))].sort();
+  $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
+  for (const [id, k] of [["f-dq", "dq"], ["f-miss", "miss"], ["f-lq", "lq"], ["f-q", "q"], ["f-title", "title"], ["f-src", "src"], ["f-review", "review"]])
+    $(id).addEventListener("input", e => { st[k] = e.target.value; st.limit = 300; refresh(); });
+  $("clear").addEventListener("click", () => clearFilters(""));
+  $("go-prov").addEventListener("click", () => {
+    const r = ROWS.find(x => x.ident === META.provision); if (!r) return;
+    if (!matches(r)) clearFilters(r.matches ? "match" : "");
+    select(r.key);
+  });
+}
+function clearFilters(dq) {
+  Object.assign(st, { dq, miss: "", lq: "", q: "", title: "", src: "", review: "", limit: 300 });
+  for (const [id, v] of [["f-dq", dq], ["f-miss", ""], ["f-lq", ""], ["f-q", ""], ["f-title", ""], ["f-src", ""], ["f-review", ""]]) $(id).value = v;
+  refresh();
+}
+
+function matches(r) {
+  if (st.dq === "match" && !r.matches) return false;
+  if (st.dq === "near" && (r.matches || r.nMet !== 4)) return false;
+  if (st.miss !== "" && (r.matches || !r.cands.length || bestCand(r).met[+st.miss])) return false;
+  if (st.lq !== "" && !r.queries.includes(+st.lq)) return false;
+  if (st.title && r.title !== st.title) return false;
+  if (st.src && r.src !== st.src) return false;
+  if (st.review) { const m = (reviews[r.key] || {}).mark || "none"; if (m !== st.review) return false; }
+  if (st.q) { const q = st.q.toLowerCase(); if (!(r.ident.toLowerCase().includes(q) || citation(r.ident).toLowerCase().includes(q) || r.words.join(" ").toLowerCase().includes(q))) return false; }
+  return true;
+}
+// Short excerpt: the phrase and N1, the "if", and N2, each with a little context.
+function snippet(r) {
+  const c = bestCand(r);
+  if (!c) return esc(r.words.slice(0, 24).join(" "));
+  const role = i => (i >= c.p0 && i <= c.p1) || i === c.det1 || i === c.n1 ? "conj" : i === c.mark ? "accent" : i === c.det2 || i === c.n2 ? "neg" : null;
+  const parts = [[c.p0 - 3, Math.max(c.det1, c.n1) + 4]];
+  if (c.mark >= 0) parts.push([c.mark - 1, c.mark + 4]);
+  if (c.n2 >= 0) parts.push([Math.min(c.det2, c.n2) - 2, c.n2 + 3]);
+  const merged = [];
+  for (const [a, b] of parts.map(([a, b]) => [Math.max(0, a), Math.min(r.words.length, b)]).sort((x, y) => x[0] - y[0])) {
+    const last = merged[merged.length - 1]; if (last && a <= last[1] + 2) last[1] = Math.max(last[1], b); else merged.push([a, b]);
+  }
+  return merged.map(([a, b]) => r.words.slice(a, b).map((w, k) => { const c2 = role(a + k); return c2 ? `<span style="color:var(--${c2});font-weight:600">${esc(w)}</span>` : esc(w); }).join(" "))
+    .join(` <span class="gap">…</span> `);
+}
+function bitsHtml(c) { return `<span class="bits" title="conditions met, in order">${c.met.map(x => `<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
+
+let filtered = [];
+function refresh() {
+  $("f-miss").disabled = st.dq === "match";
+  filtered = ROWS.filter(matches);
+  $("count").textContent = `${filtered.length.toLocaleString()} sentence${filtered.length === 1 ? "" : "s"}`;
+  const shown = filtered.slice(0, st.limit);
+  $("list").innerHTML = shown.map(r => {
+    const rv = (reviews[r.key] || {}).mark, c = bestCand(r);
+    return `<div class="row" role="option" data-id="${esc(r.key)}" aria-selected="${r.key === st.sel}">
+      <div class="cite"><span>${esc(citation(r.ident))}</span><span style="color:var(--muted)">${esc(r.src === "chapeau_condensed" ? "chapeau" : r.src)}</span>${c ? bitsHtml(c) : ""}${rv ? `<span class="rv">${REVIEW_LABEL[rv]}</span>` : ""}</div>
+      <div class="snip">${snippet(r)}</div></div>`;
+  }).join("") + (filtered.length > st.limit ? `<button class="more" type="button" id="more">Show ${Math.min(300, filtered.length - st.limit)} more</button>` : "");
+  if (!filtered.length) $("list").innerHTML = `<p class="empty" style="padding:20px 16px">No sentences match these filters.</p>`;
+  const more = $("more"); if (more) more.addEventListener("click", () => { st.limit += 300; refresh(); });
+  if (!filtered.some(r => r.key === st.sel) && filtered.length) select(filtered[0].key, false);
+}
+$("list").addEventListener("click", e => { const row = e.target.closest(".row"); if (row) select(row.dataset.id, false); });
+
+/* ---------- detail ---------- */
+async function select(id, scroll = true) {
+  st.sel = id; const r = findRow(id); st.cand = Math.max(0, r.best);
+  document.querySelectorAll("#list .row").forEach(el => el.setAttribute("aria-selected", String(el.dataset.id === id)));
+  if (scroll) { const el = document.querySelector(`#list .row[data-id="${CSS.escape(id)}"]`); if (el) el.scrollIntoView({ block: "nearest" }); }
+  if (!r.conllu) {
+    $("detail").querySelector(".inner").innerHTML = `<p class="empty">Loading the parse…</p>`;
+    try { await ensureParse(r); } catch (e) { $("detail").querySelector(".inner").innerHTML = `<p class="empty">${esc(e.message)}</p>`; return; }
+    if (st.sel !== id) return;
+  }
+  renderDetail();
+}
+// Word index -> CSS classes for the selected candidate.
+function roles(P, c) {
+  const cls = P.ws.map(() => new Set());
+  if (!c) return { cls, ifSpan: null };
+  for (let i = c.p0; i <= c.p1; i++) cls[i].add("frame");
+  cls[c.det1].add("frame");
+  const add = (i, k) => { if (i >= 0) cls[i].add(k); };
+  add(c.n1, "n1"); add(c.det2, "n2"); add(c.n2, "n2"); add(c.mark, "if"); add(c.gov, "gov");
+  for (const [a, b] of c.mods1) for (let i = a; i <= b; i++) cls[i].add("m1");
+  for (const [a, b] of c.mods2) for (let i = a; i <= b; i++) cls[i].add("m2");
+  return { cls, ifSpan: c.ifHead >= 0 ? span(P, c.ifHead) : null };
+}
+const q = s => `<q>${esc(s)}</q>`;
+function condText(r, P, c) {
+  const w = i => i >= 0 ? P.ws[i].form : "";
+  const phrase = r.words.slice(c.p0, c.det1 + 1).join(" ");
+  const yieldOf = i => { const s = span(P, i); return r.words.slice(s[0], s[1] + 1).join(" "); };
+  const modsText = ms => ms.length ? ms.map(([a, b]) => q(r.words.slice(a, b + 1).join(" "))).join(", ") : "none";
+  const ifq = c.ifHead >= 0 ? q(yieldOf(c.ifHead).slice(0, 140) + (yieldOf(c.ifHead).length > 140 ? "…" : "")) : "";
+  return [
+    c.met[0] ? `${q(phrase)} is the determiner of ${q(w(c.n1))} (N1, ${P.ws[c.n1].upos}).`
+      : `${q(phrase)}: the ${q(w(c.det1))} is not the determiner of a noun in this parse${P.ws[c.det1] && P.ws[c.det1].head >= 0 ? ` (it is ${P.ws[c.det1].rel} of ${q(w(P.ws[c.det1].head))})` : ""}.`,
+    c.mark < 0 ? `No "if" attached as mark after N1.`
+      : c.met[1] ? `${q("if")} marks ${q(w(c.ifHead))}: ${ifq}, which is outside the phrase.`
+      : `${q("if")} marks ${q(w(c.ifHead))}, which sits inside the phrase headed by ${q(w(c.frame))}.`,
+    c.n1 < 0 || c.mark < 0 ? "Not checked." : c.met[2] ? `The phrase (${q(w(c.frame))}, ${P.ws[c.frame].rel}) and the if-clause (${q(w(c.ifHead))}, ${P.ws[c.ifHead].rel}) both modify ${q(w(c.gov))}.`
+      : `The phrase (${q(w(c.frame))}) modifies ${c.gov >= 0 ? q(w(c.gov)) : "nothing (it is the root)"}; the if-clause (${q(w(c.ifHead))}) modifies ${P.ws[c.ifHead].head >= 0 ? q(w(P.ws[c.ifHead].head)) : "nothing (it is the root)"}.`,
+    c.n1 < 0 || c.mark < 0 ? "Not checked." : c.met[3] ? `${q(w(c.det2) + " " + w(c.n2))} (N2) in the if-clause has N1's lemma ${q(P.ws[c.n1].lemma)}.`
+      : `No ${q("a")}/${q("an")} + ${q(P.ws[c.n1].lemma)} in the if-clause.`,
+    c.n2 < 0 ? "Not checked." : `N1 modifiers: ${modsText(c.mods1)}. N2 modifiers: ${modsText(c.mods2)}.` + (c.met[4] ? "" : c.mods1.length && c.mods2.length ? " The same." : " One of them has none."),
+  ];
+}
+function renderDetail() {
+  const r = findRow(st.sel); if (!r) return;
+  const P = parseConllu(r.conllu), c = r.cands[st.cand];
+  const { cls, ifSpan } = roles(P, c);
+  const pill = r.matches ? `<span class="pill match">Matches</span>` : r.nMet === 4 ? `<span class="pill near">Near miss · 4 of 5</span>` : `<span class="pill none">${r.nMet} of 5</span>`;
+  const lii = liiUrl(r.ident);
+  const has = (i, k) => cls[i].has(k);
+  const textHtml = r.words.map((w, i) => {
+    const k = [];
+    if (has(i, "frame")) k.push("t-frame"); if (has(i, "m1")) k.push("t-m1"); if (has(i, "m2")) k.push("t-m2");
+    if (has(i, "n1")) k.push("t-n1"); if (has(i, "n2")) k.push("t-n2"); if (has(i, "if")) k.push("t-if"); if (has(i, "gov")) k.push("t-gov");
+    let tok = k.length ? `<span class="${k.join(" ")}">${esc(w)}</span>` : esc(w);
+    if (ifSpan && i === ifSpan[0]) tok = `<span class="t-brk">⟦</span>` + tok;
+    if (ifSpan && i === ifSpan[1]) tok = tok + `<span class="t-brk">⟧</span>`;
+    if (i === r.words.length - 1) return tok;
+    const sc = ["m1", "m2", "frame"].filter(x => has(i, x) && has(i + 1, x)).map(x => "t-" + x);
+    return tok + (sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
+  }).join("");
+  const conds = c ? condText(r, P, c) : [];
+  const candRows = r.cands.map((x, i) => {
+    const ctx = (a, b, hi, col) => r.words.slice(Math.max(0, a), Math.min(r.words.length, b)).map((w, k) => hi.includes(Math.max(0, a) + k) ? `<span style="color:var(--${col});font-weight:600">${esc(w)}</span>` : esc(w)).join(" ");
+    return `<tr data-i="${i}" aria-selected="${i === st.cand}">
+      <td class="ctx">${ctx(x.p0, x.det1 + 3, [x.det1, x.n1], "conj")}</td>
+      <td class="ctx">${x.mark >= 0 ? ctx(x.mark, x.mark + 4, [x.mark], "accent") + ` <span class="hint">word ${x.mark + 1}</span>` : `<span class="no">none</span>`}</td>
+      <td class="ctx">${x.n2 >= 0 ? ctx(x.det2 - 1, x.n2 + 3, [x.det2, x.n2], "neg") : `<span class="no">none</span>`}</td>
+      <td>${bitsHtml(x)} ${x.met.filter(Boolean).length}/5</td></tr>`;
+  }).join("");
+  const rv = reviews[r.key] || {};
+  const qs = r.queries.map(i => esc(phraseLabel(i))).join("; ");
+  $("detail").querySelector(".inner").innerHTML = `
+    <div class="dhead"><h2>${esc(citation(r.ident))}</h2>${pill}</div>
+    <div class="meta"><span>${esc(r.src.replace("_", " "))}</span><span>${r.words.length} words</span>
+      <span>${r.cands.length} candidate${r.cands.length === 1 ? "" : "s"}</span><span>${esc(r.id)}</span>${lii ? `<a href="${lii}" target="_blank" rel="noopener">Open on LII ↗</a>` : ""}</div>
+    <div class="meta"><span>Linear queries: ${qs || "none"}</span></div>
+    <div class="legend"><span class="l-frame">phrase + a/an</span><span class="l-n1">N1</span><span class="l-m1">N1's modifiers</span><span class="l-if">if-clause</span><span class="l-n2">N2</span><span class="l-m2">N2's modifiers</span><span class="l-gov">head both modify</span></div>
+    <div class="text">${textHtml}</div>
+    ${c ? `<div><h3>Conditions${r.cands.length > 1 ? (st.cand === r.best ? " · best candidate" : ` · candidate ${st.cand + 1}`) : ""}</h3><ol class="conds">${META.conditions.map(([k, t], i) =>
+      `<li><span class="${c.met[i] ? "ok" : "ko"}" aria-label="${c.met[i] ? "met" : "not met"}">${c.met[i] ? "✓" : "✗"}</span><span class="what">${esc(t)}</span><span class="why">${conds[i]}</span></li>`).join("")}</ol></div>` : `<p class="hint">No candidate: none of the phrases is followed by "a"/"an" in the parse's words.</p>`}
+    ${r.cands.length > 1 ? `<div><h3>Candidates · click one to show it</h3><div class="tablewrap"><table>
+      <thead><tr><th>phrase + N1</th><th>if</th><th>N2</th><th>conditions</th></tr></thead><tbody>${candRows}</tbody></table></div></div>` : ""}
+    <div>
+      <div class="treebar"><h3>Dependencies</h3>
+        <span class="seg"><button type="button" data-v="focus" aria-pressed="${st.view === "focus"}">Phrase to if-clause</button><button type="button" data-v="full" aria-pressed="${st.view === "full"}">Whole sentence</button></span>
+        <span class="hint" id="t-hint"></span></div>
+      <div class="treebox" id="treebox"></div></div>
+    <details class="conllu"><summary>CoNLL-U</summary><div class="tablewrap" style="margin-top:8px"><table>
+      <thead><tr><th>id</th><th>form</th><th>lemma</th><th>upos</th><th>xpos</th><th>feats</th><th>head</th><th>deprel</th></tr></thead>
+      <tbody>${P.ws.map((x, i) => `<tr class="${has(i, "n1") ? "r-n1" : has(i, "n2") ? "r-n2" : has(i, "if") ? "r-if" : ""}"><td>${i + 1}</td><td>${esc(x.form)}</td><td>${esc(x.lemma)}</td><td>${esc(x.upos)}</td><td>${esc(x.xpos)}</td><td>${esc(x.feats)}</td><td>${x.head + 1}${x.head >= 0 ? " " + esc(P.ws[x.head].form) : ""}</td><td>${esc(x.rel)}</td></tr>`).join("")}</tbody></table></div></details>
+    <div class="review"><h3 style="margin:0">My review</h3>
+      <div class="marks">
+        <button type="button" class="btn" data-m="yes" aria-pressed="${rv.mark === "yes"}">Tracks 1225(b)(2)(A) <kbd>1</kbd></button>
+        <button type="button" class="btn" data-m="no" aria-pressed="${rv.mark === "no"}">Does not <kbd>2</kbd></button>
+        <button type="button" class="btn" data-m="unsure" aria-pressed="${rv.mark === "unsure"}">Unsure <kbd>3</kbd></button></div>
+      <label for="r-note" class="hint">Notes (same or different set of individuals, parser error, …)</label>
+      <textarea id="r-note">${esc(rv.note || "")}</textarea>
+      <div class="foot"><span class="hint">Saved in this browser only. <kbd>j</kbd>/<kbd>k</kbd> next/previous sentence.</span>
+        <button type="button" class="btn" id="export">Export reviews (CSV)</button></div></div>`;
+  const inner = $("detail").querySelector(".inner");
+  inner.querySelectorAll("tbody tr[data-i]").forEach(tr => tr.addEventListener("click", () => { st.cand = +tr.dataset.i; renderDetail(); }));
+  inner.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { st.view = b.dataset.v; renderDetail(); }));
+  inner.querySelectorAll(".marks button").forEach(b => b.addEventListener("click", () => setMark(b.dataset.m)));
+  $("r-note").addEventListener("input", e => { reviews[r.key] = { ...(reviews[r.key] || {}), note: e.target.value }; saveReviews(); });
+  $("export").addEventListener("click", exportCsv);
+  drawDeps(r, P, c, cls, ifSpan);
+}
+function setMark(m) {
+  const r = findRow(st.sel); if (!r) return;
+  const cur = reviews[r.key] || {}; reviews[r.key] = { ...cur, mark: cur.mark === m ? undefined : m }; saveReviews();
+  renderDetail(); const row = document.querySelector(`#list .row[data-id="${CSS.escape(r.key)}"] .cite`);
+  if (row) { const old = row.querySelector(".rv"); if (old) old.remove(); const v = reviews[r.key].mark; if (v) row.insertAdjacentHTML("beforeend", `<span class="rv">${REVIEW_LABEL[v]}</span>`); }
+}
+function exportCsv() {
+  const lines = [["sent_id", "citation", "identifier", "matches", "conditions_met", "review", "notes"].join(",")];
+  ROWS.forEach(r => { const v = reviews[r.key]; if (v && (v.mark || v.note)) lines.push([csvCell(r.id), csvCell(citation(r.ident)), csvCell(r.ident), r.matches, r.nMet, csvCell(v.mark || ""), csvCell(v.note || "")].join(",")); });
+  downloadCsv("1225b_reviews.csv", lines);
+}
+
+/* ---------- dependency arcs (SVG) ---------- */
+// Words left to right; an arc from each head to its dependent, higher for arcs that span others.
+function drawDeps(r, P, c, cls, ifSpan) {
+  const n = P.ws.length;
+  let lo = 0, hi = n - 1;
+  if (st.view === "focus" && c) {
+    const pts = [c.p0, c.det1, c.n1, c.gov, c.mark, c.n2, ...(ifSpan || []), ...c.mods1.flat()].filter(i => i >= 0);
+    lo = Math.max(0, Math.min(...pts) - 2); hi = Math.min(n - 1, Math.max(...pts) + 2);
+  }
+  const inWin = i => i >= lo && i <= hi;
+  const xs = [], ws = []; let x = 0; const GAP = 16;
+  for (let i = lo; i <= hi; i++) {
+    const w = Math.max(tw(P.ws[i].form, "13.5px 'Source Serif 4', serif"), tw(P.ws[i].upos, "10px 'IBM Plex Mono', monospace")) + GAP;
+    xs[i] = x + w / 2; ws[i] = w; x += w;
+  }
+  const arcs = [];
+  for (let i = lo; i <= hi; i++) { const h = P.ws[i].head; if (h >= 0 && inWin(h)) arcs.push({ h, d: i, a: Math.min(h, i), b: Math.max(h, i) }); }
+  arcs.sort((p, q2) => (p.b - p.a) - (q2.b - q2.a));
+  for (const A of arcs) { A.lvl = 1; for (const B of arcs) { if (B === A) break; if (B.a >= A.a && B.b <= A.b) A.lvl = Math.max(A.lvl, B.lvl + 1); } }
+  const STEP = 15, MAXL = Math.max(1, ...arcs.map(a => a.lvl)), PAD = 14;
+  const top = Math.min(MAXL, 40) * STEP + 34, baseY = top + 12, H = baseY + 46, W = x + PAD * 2;
+  // Arcs the query looks at: the phrase's attachment, determiners and modifiers of N1 and N2, the if-clause's.
+  const roleOf = A => {
+    if (!c) return "";
+    if (A.d === c.frame || A.d === c.det1 || (A.h === c.n1 && cls[A.d].has("m1"))) return "c-n1";
+    if (A.d === c.det2 || (A.h === c.n2 && cls[A.d].has("m2"))) return "c-n2";
+    if (A.d === c.mark || A.d === c.ifHead) return "c-if";
+    return "";
+  };
+  const parts = [];
+  if (ifSpan) {
+    const a = Math.max(lo, ifSpan[0]), b = Math.min(hi, ifSpan[1]);
+    if (a <= b) parts.push(`<rect class="spanif" x="${xs[a] - ws[a] / 2 + PAD + 2}" y="${baseY - 16}" width="${xs[b] + ws[b] / 2 - xs[a] + ws[a] / 2 - 4}" height="36" rx="4"/>`);
+  }
+  for (let i = lo; i <= hi; i++) {
+    const k = cls[i];
+    if (k.has("m1") || k.has("m2")) parts.push(`<rect class="${k.has("m1") ? "span1" : "span2"}" x="${xs[i] - ws[i] / 2 + PAD}" y="${baseY - 13}" width="${ws[i]}" height="18"/>`);
+  }
+  for (const A of arcs) {
+    const x1 = xs[A.h] + PAD, x2 = xs[A.d] + PAD, y0 = baseY - 18, hgt = Math.min(A.lvl, 40) * STEP + 4;
+    const yTop = y0 - hgt, r0 = Math.min(8, Math.abs(x2 - x1) / 2);
+    const dir = x2 > x1 ? 1 : -1;
+    const path = `M${x1},${y0} L${x1},${yTop + r0} Q${x1},${yTop} ${x1 + dir * r0},${yTop} L${x2 - dir * r0},${yTop} Q${x2},${yTop} ${x2},${yTop + r0} L${x2},${y0}`;
+    const rel = P.ws[A.d].rel, lw = tw(rel, "10px 'IBM Plex Mono', monospace") + 6, mx = (x1 + x2) / 2;
+    const role = roleOf(A);
+    parts.push(`<g class="${role}${role ? " hot" : ""}"><path class="arc" d="${path}"/><path class="head" d="M${x2 - 3.5},${y0 - 6} L${x2 + 3.5},${y0 - 6} L${x2},${y0} Z"/>` +
+      `<rect class="relbg" x="${mx - lw / 2}" y="${yTop - 6}" width="${lw}" height="12"/><text class="rel" x="${mx}" y="${yTop + 3.5}" text-anchor="middle">${esc(rel)}</text></g>`);
+  }
+  for (let i = lo; i <= hi; i++) {
+    const w = P.ws[i], k = cls[i], cx = xs[i] + PAD;
+    const wc = ["n1", "n2", "if", "gov", "frame"].filter(r2 => k.has(r2)).map(r2 => "w-" + r2).join(" ");
+    let extra = "";
+    if (w.head === -1) extra = `<path class="arc" d="M${cx},${10} L${cx},${baseY - 18}"/><text class="rel" x="${cx + 4}" y="20">root</text>`;
+    else if (!inWin(w.head)) extra = `<text class="out" x="${cx}" y="${baseY + 30}" text-anchor="middle">${esc(w.rel)} ${w.head < lo ? "←" : "→"} ${esc(P.ws[w.head].form)}</text>`;
+    parts.push(`<g class="${wc}">${extra}<text class="form" x="${cx}" y="${baseY}" text-anchor="middle">${esc(w.form)}</text><text class="pos" x="${cx}" y="${baseY + 16}" text-anchor="middle">${esc(w.upos)}</text></g>`);
+  }
+  $("treebox").innerHTML = `<svg class="dep" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Dependency arcs for the selected sentence">${parts.join("")}</svg>`;
+  $("t-hint").textContent = `words ${lo + 1}–${hi + 1} of ${n}` + (st.view === "focus" && (lo > 0 || hi < n - 1) ? " · arcs to words outside are listed under the word" : "");
+  if (c) { const fx = xs[Math.max(lo, c.p0)]; if (fx !== undefined) $("treebox").scrollLeft = Math.max(0, fx - 60); }
+}
+
+/* ---------- keyboard ---------- */
+bindKeys(d => {
+  const i = filtered.findIndex(r => r.key === st.sel);
+  if (d > 0 && i < filtered.length - 1) { if (i + 1 >= st.limit) { st.limit += 300; refresh(); } select(filtered[i + 1].key); }
+  else if (d < 0 && i > 0) select(filtered[i - 1].key);
+}, setMark);
+
+loadScript("data/index.js").then(() => { setup(); refresh(); },
+  () => { $("list").innerHTML = `<p class="loading">Could not load data/index.js.</p>`; });
+</script>
+</body>
+</html>

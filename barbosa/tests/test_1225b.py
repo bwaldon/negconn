@@ -124,6 +124,14 @@ def test_frame_attached_inside_the_if_clause_is_not_same_governor():
     assert met(text) == set(dq.CONDITIONS) - {"same_governor"}
 
 
+def test_frame_at_the_root():
+    """A fragment parse with the phrase's head as root: no governor, so no same_governor."""
+    text = edit(A["conllu"], {CASE: {6: 0, 7: "root"}, DETAINED: {6: CASE, 7: "acl"},
+                              DETERMINES: {6: CASE, 7: "advcl"}})
+    assert met(text) == {"frame_np"} | {"repeated_np", "different_mods"}
+    assert dq.read_conllu(text).head(-1) == -1
+
+
 PLAN = [("In", "in", "ADP", 3, "case"), ("the", "the", "DET", 3, "det"), ("case", "case", "NOUN", 18, "obl"),
         ("of", "of", "ADP", 7, "case"), ("a", "a", "DET", 7, "det"), ("covered", "cover", "VERB", 7, "amod"),
         ("plan", "plan", "NOUN", 3, "nmod"), (",", ",", "PUNCT", 3, "punct"), ("if", "if", "SCONJ", 13, "mark"),

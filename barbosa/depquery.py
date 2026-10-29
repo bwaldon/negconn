@@ -82,7 +82,7 @@ class DepTree:
         return len(self.words)
 
     def head(self, i: int) -> int:
-        return self.words[i].head
+        return self.words[i].head if i >= 0 else -1
 
     def ancestors(self, i: int) -> list[int]:
         """i, its head, its head's head, … up to the root."""
@@ -214,7 +214,8 @@ def candidates(t: DepTree, phrases: dict[str, tuple[str, ...]]) -> list[Candidat
                 if m >= 0:
                     c.if_head = t.head(m)
                     c.met["if_outside"] = c.if_head >= 0 and not t.dominates(frame, c.if_head)
-                    c.met["same_governor"] = c.if_head >= 0 and t.head(c.if_head) == c.governor
+                    c.met["same_governor"] = (c.governor >= 0 and c.if_head not in (-1, frame)
+                                              and t.head(c.if_head) == c.governor)
                     if c.if_head >= 0:
                         c.n2, c.det2 = _repeat(t, n1, c.if_head)
                     c.met["repeated_np"] = c.n2 >= 0

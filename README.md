@@ -13,23 +13,30 @@ coordination both in it). Review marks can be saved in the browser and exported 
 load per-title tree files on demand, so the site also works opened from disk
 (`site/index.html` after building).
 
+**Also here:** [`barbosa/`](barbosa/README.md), U.S. Code sentences shaped like 8 U.S.C.
+§ 1225(b)(2)(A) (*in the case of an alien who …, if … an alien seeking admission …*), found with a
+dependency-parse query over the RA's linear-query hits. Dashboard:
+<https://bwaldon.github.io/negconn/1225b/>.
+
 ## Pipeline
 
 The Python package and the Modal app and Volume are still named `negconj` (and `negconj-data`).
 
-
-A run studies one connective (`--conn and|or`). Only the prefilter, the sentence regex and the CC
-word change between them; extraction, segmentation, parsing and C2 are shared code.
+A run carries out one study (`--study`, see `negconj/study.py`): `and` and `or` are the negated
+connectives (`negconj/connectives.py`: prefilter, sentence regex, C2 classification and summary;
+only the connective changes between them), `1225b` is the study in `barbosa/`. Extraction,
+segmentation, sharded and checkpointed parsing, merge, consistency checks and the dashboard
+scaffolding (`negconj/dashboard.py`, `negconj/assets/`) are shared by every study.
 
 | Stage | Module | What it does |
 |---|---|---|
 | Extract | `negconj/uslm_extract.py` | USLM XML → text units; notes and footnote markers removed; chapeaus condensed into one sentence |
-| Plan | `negconj/shards.py` | prefilter units containing both *not* and the connective; group sections into GPU shards |
-| Segment | `negconj/segment.py` | Stanza sentence splitting plus a re-merge pass for statutory punctuation; regex `\bnot\b.*\b(and|or)\b` |
-| Parse | `negconj/parse.py` | Stanza constituency parser (`ptb3-revised_electra-large`), one best tree per sentence; matches over 4,000 tokens are recorded as failures, not parsed |
-| Classify | `negconj/classify.py` | C2 for every (not, connective) pair: *not*'s parent is a VP that dominates the coordination node |
-| Report | `negconj/report.py` | consistency checks, stratified review sample, summary, manifest, checksums |
-| Run | `negconj/modal_app.py`, `scripts/launch.py` | Modal orchestration on L4 GPUs; resumable, checkpointed per section |
+| Plan | `negconj/shards.py` | prefilter units with the study's patterns (here: both *not* and the connective); group sections into GPU shards |
+| Segment | `negconj/segment.py` | Stanza sentence splitting plus a re-merge pass for statutory punctuation; the study's regex (here `\bnot\b.*\b(and|or)\b`) picks the sentences to parse |
+| Parse | `negconj/parse.py` | Stanza constituency parser (`ptb3-revised_electra-large`), one best tree per sentence (the dependency parser for `1225b`); matches over 4,000 tokens are recorded as failures, not parsed |
+| Classify | `negconj/classify.py`, `negconj/connectives.py` | C2 for every (not, connective) pair: *not*'s parent is a VP that dominates the coordination node |
+| Report | `negconj/report.py`, `negconj/connectives.py` | consistency checks, stratified review sample, summary, manifest, checksums |
+| Run | `negconj/modal_app.py`, `scripts/launch.py` | Modal orchestration on L4 GPUs (A10G, then L40S, when no L4 is free); resumable, checkpointed per section |
 
 The disjunction run reuses a tree from the conjunction run when a sentence matches both patterns
 and its tokens and model package are identical (25,098 sentences).
@@ -42,10 +49,10 @@ every decision, count and anomaly, including where the code departs from the wor
 ```sh
 python3.12 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/pytest                                     # unit, checkpoint and Pulsifer regression tests
-.venv/bin/python scripts/run_local.py --titles 29 18 # local CPU run
+.venv/bin/python scripts/run_local.py --titles 29 18 # local CPU run (--study and|or|1225b)
 source scripts/modal_env.sh                          # Modal token from .env (not committed)
 .venv/bin/python scripts/launch.py --run full --target-chars 2000000 --gpu-budget-seconds 45000
-.venv/bin/python scripts/launch.py --run disj --conn or --reuse-run full --target-chars 2000000 \
+.venv/bin/python scripts/launch.py --run disj --study or --reuse-run full --target-chars 2000000 \
     --gpu-budget-seconds 30000 --no-deploy
 scripts/watch_run.sh disj                            # follow a run's orchestrator log
 scripts/pull_results.sh full                         # -> results/ (checksums verified)

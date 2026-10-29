@@ -2,6 +2,7 @@
 # Pull results from the Modal Volume and verify every checksum locally.
 #   scripts/pull_results.sh            # full run: /data/results -> ./results
 #   scripts/pull_results.sh pilot      # /data/pilot/results -> ./results_pilot
+#   scripts/pull_results.sh 1225b barbosa/results   # explicit destination
 # Needs Modal credentials in the environment (e.g. `source scripts/modal_env.sh`).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -9,6 +10,7 @@ repo="$PWD"
 MODAL="${MODAL:-$repo/.venv/bin/modal}"
 run="${1:-full}"
 if [[ "$run" == "full" ]]; then src="results"; dst="$repo/results"; else src="$run/results"; dst="$repo/results_$run"; fi
+[[ -n "${2:-}" ]] && dst="$repo/$2"
 
 # `modal volume get VOL path/to/results` (no destination) writes ./results in the cwd.
 tmp="$(mktemp -d)"

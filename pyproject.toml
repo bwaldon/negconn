@@ -23,6 +23,10 @@ dependencies = [
 [tool.setuptools]
 packages = ["negconj", "barbosa"]
 
+[tool.setuptools.package-data]
+negconj = ["assets/*"]
+barbosa = ["dashboard_template.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "barbosa/tests"]
 pythonpath = [".", "tests"]
