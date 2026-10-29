@@ -93,7 +93,20 @@ candidate's conditions), `candidates.parquet` (every candidate), `matches.csv`/`
 
 ## Results (release point 119-121)
 
-See `RUNLOG.md`.
+| | sentences |
+|---|---|
+| found by the RA's queries | 1,992 (1,987 parsed; 5 over 4,000 tokens) |
+| indefinite NP after the phrase, if-clause outside it | 1,854 |
+| … with N1's noun repeated as an indefinite NP in the if-clause | 199 |
+| **match** (… with different modifiers) | **132** |
+| **strict match** (… phrase and if-clause modify the same head) | **45** |
+| near misses (3 of the 4 conditions of a match) | 87 |
+
+8 U.S.C. § 1225(b)(2)(A) is a strict match; so are, e.g., 8 U.S.C. § 1229b(a), 8 U.S.C.
+§ 1151(f)(2)–(3) and 18 U.S.C. § 3553(f). *In the case of* accounts for 95 of the matches and
+*with respect to* for 37. Strict matches are the cleaner set; non-strict ones include if-clauses
+the parser stretched too far. Detail, per query and per title, in `results/summary.md` and
+`RUNLOG.md`.
 
 ## Limitations
 
