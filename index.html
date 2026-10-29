@@ -7,8 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
 <style>
-/* Layout: a working desk. Sentence list on the left, the selected sentence read like a statute
-   page on the right, its tree drawn below. Red marks negation, indigo marks conjunction. */
+/* Shared by the U.S. Code dashboards (negconn, 1225b); inlined into each page when it is built
+   (negconj.dashboard). Layout: a working desk. Sentence list on the left, the selected sentence
+   read like a statute page on the right, its parse drawn below. Each page adds its own marks. */
 :root {
   --paper: #f5f7f6;
   --surface: #ffffff;
@@ -84,15 +85,13 @@ aside { border-right: 1px solid var(--rule); display: flex; flex-direction: colu
 .row .cite .rv { margin-left: auto; font-size: 11px; }
 .row .snip { font: 14px/1.4 var(--font-text); color: var(--ink); overflow-wrap: anywhere; }
 .row .snip .gap { color: var(--muted); }
-.row .conn { font: 600 11px var(--font-mono); color: var(--conj); border: 1px solid var(--conj); border-radius: 3px; padding: 0 4px; }
 .loading { color: var(--muted); padding: 20px 16px; }
-.also { font-size: 12px; color: var(--muted); }
-.also button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; text-decoration: underline; }
 .more { margin: 10px 16px; padding: 6px; width: calc(100% - 32px); border: 1px dashed var(--rule); background: none; border-radius: 4px; cursor: pointer; color: var(--accent); }
 
 /* ---------- detail ---------- */
 #detail { overflow-y: auto; min-height: 0; padding-block: 18px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .inner { max-width: 1100px; display: grid; gap: 18px; }
+.inner > * { min-width: 0; }  /* wide tables and trees scroll in their own boxes */
 .dhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
 .dhead h2 { margin: 0; font: 600 22px/1.2 var(--font-text); text-wrap: balance; }
 .pill { font: 500 11px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
@@ -102,18 +101,11 @@ aside { border-right: 1px solid var(--rule); display: flex; flex-direction: colu
 .meta a { color: var(--accent); }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
-.legend .l-neg::before { background: var(--neg); }
-.legend .l-vp::before { background: var(--neg-soft); border: 1px solid var(--neg); }
-.legend .l-conj::before { background: var(--conj); }
-.legend .l-coord::before { border-bottom: 2px solid var(--conj); height: 6px; }
-.legend .l-if::before { content: "⟦ ⟧"; width: auto; height: auto; color: var(--accent); font-weight: 700; }
 
 .text { font: 17px/1.75 var(--font-text); max-width: 75ch; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 20px; }
-.text .t-vp { background: var(--neg-soft); }
-.text .t-coord { box-shadow: inset 0 -2px 0 var(--conj); }
-.text .t-not { color: var(--neg); font-weight: 600; }
-.text .t-and { color: var(--conj); font-weight: 600; }
-.text .t-if { color: var(--accent); font-weight: 700; font-family: var(--font-ui); }
+.text .ol { padding-left: calc(var(--d, 0) * 1.7em); }
+.text .ol + .ol { margin-top: 4px; }
+.text .olnum { color: var(--muted); font: 500 .8em var(--font-mono); }
 .text details { margin-top: 10px; font: 13px/1.5 var(--font-ui); color: var(--muted); }
 .text details p { font: 14px/1.6 var(--font-text); color: var(--ink); margin: 6px 0 0; }
 
@@ -138,6 +130,29 @@ td.mono { font-family: var(--font-mono); }
 .btn { border: 1px solid var(--rule); background: var(--surface); border-radius: 5px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; }
 .treebox { overflow: auto; max-height: 70vh; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); padding: 10px; }
+
+.review { display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
+.review .marks { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.review .marks button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.review textarea { width: 100%; min-height: 54px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); padding: 6px 8px; resize: vertical; }
+.review .foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--paper); }
+.empty { color: var(--muted); padding: 40px 0; }
+@media (prefers-reduced-motion: no-preference) { .row { transition: background .12s; } }
+/* not … and/or: red marks negation, indigo the connective, green an if-clause. */
+.row .conn { font: 600 11px var(--font-mono); color: var(--conj); border: 1px solid var(--conj); border-radius: 3px; padding: 0 4px; }
+.also { font-size: 12px; color: var(--muted); }
+.also button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; text-decoration: underline; }
+.legend .l-neg::before { background: var(--neg); }
+.legend .l-vp::before { background: var(--neg-soft); border: 1px solid var(--neg); }
+.legend .l-conj::before { background: var(--conj); }
+.legend .l-coord::before { border-bottom: 2px solid var(--conj); height: 6px; }
+.legend .l-if::before { content: "⟦ ⟧"; width: auto; height: auto; color: var(--accent); font-weight: 700; }
+.text .t-vp { background: var(--neg-soft); }
+.text .t-coord { box-shadow: inset 0 -2px 0 var(--conj); }
+.text .t-not { color: var(--neg); font-weight: 600; }
+.text .t-and { color: var(--conj); font-weight: 600; }
+.text .t-if { color: var(--accent); font-weight: 700; font-family: var(--font-ui); }
 svg.tree text { font-family: var(--font-mono); font-size: 12px; fill: var(--ink); }
 svg.tree .lbl { fill: var(--muted); font-weight: 500; }
 svg.tree line, svg.tree path.edge { stroke: var(--rule); stroke-width: 1.2; fill: none; }
@@ -153,7 +168,6 @@ svg.tree .coord text { fill: var(--conj); }
 svg.tree .lca text.lbl { text-decoration: underline; }
 svg.tree .ifc rect { fill: var(--accent-soft); stroke: var(--accent); }
 svg.tree .ifc text { fill: var(--accent); }
-
 .outline { font: 12.5px/1.6 var(--font-mono); }
 .outline details { margin-left: 14px; }
 .outline > details { margin-left: 0; }
@@ -170,15 +184,6 @@ svg.tree .ifc text { fill: var(--accent); }
 .outline .o-and { color: var(--conj); font-weight: 600; }
 .outline .o-negvp > summary .lb { color: var(--neg); background: var(--neg-soft); padding: 0 3px; border-radius: 2px; }
 .outline .o-coord > summary .lb { color: var(--conj); background: var(--conj-soft); padding: 0 3px; border-radius: 2px; }
-
-.review { display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
-.review .marks { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.review .marks button[aria-pressed="true"] { background: var(--accent); color: var(--surface); border-color: var(--accent); }
-.review textarea { width: 100%; min-height: 54px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); padding: 6px 8px; resize: vertical; }
-.review .foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
-kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 3px; padding: 0 4px; background: var(--paper); }
-.empty { color: var(--muted); padding: 40px 0; }
-@media (prefers-reduced-motion: no-preference) { .row { transition: background .12s; } }
 </style>
 </head>
 <body>
@@ -209,33 +214,16 @@ kbd { font: 11px var(--font-mono); border: 1px solid var(--rule); border-bottom-
   <section id="detail" aria-live="polite"><div class="inner"><p class="empty">Select a sentence.</p></div></section>
 </main>
 <script>
-/* Data: per connective, data/{conn}/index.js (sentences, flags, pairs) loaded at start, and
-   data/{conn}/trees-{title}.js loaded when a sentence of that title is opened. Plain script
-   files, so this page also works when opened from disk. */
-const DATASETS = ["and","or"];
-const META = {}, TREES = {}, PENDING = {};
-let ROWS = [];
-const NEG = {
-  index(conn, d) {
-    META[conn] = d;
-    d.rows.forEach((r, n) => ROWS.push({ ds: conn, n, key: conn + "|" + r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3],
-      toks: r[4].split(" "), tree: null, flagged: r[5], relaxed: r[6], pairs: r[7].map(p => ({ not: p[0], and: p[1], notParent: p[2],
-      notRelaxedParent: p[3], coord: p[4], conj: p[5], dist: p[6], strict: p[7], rel: p[8], inIf: p[9] })) }));
-  },
-  trees(conn, title, map) { TREES[conn + "|" + title] = map; },
-};
+/* Shared by the U.S. Code dashboards (negconn, 1225b); inlined into each page when it is built
+   (negconj.dashboard): data-file loading, text helpers, citations, review storage, CSV export,
+   keyboard navigation. */
+const PENDING = {};
+// Data files are plain scripts, so a page also works opened from disk.
 function loadScript(src) {
   if (PENDING[src]) return PENDING[src];
   return PENDING[src] = new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok;
     s.onerror = () => { delete PENDING[src]; fail(new Error("could not load " + src)); }; document.head.appendChild(s); });
 }
-async function ensureTree(r) {
-  if (r.tree) return;
-  const k = r.ds + "|" + r.title;
-  if (!TREES[k]) await loadScript(`data/${r.ds}/trees-${r.title}.js`);
-  r.tree = TREES[k][r.id];
-}
-const CONN = { and: { word: "and", label: "Negative conjunction", short: "negconj" }, or: { word: "or", label: "Negative disjunction", short: "negdisj" } };
 const BRK = { "-LRB-": "(", "-RRB-": ")", "-LSB-": "[", "-RSB-": "]", "-LCB-": "{", "-RCB-": "}" };
 const word = w => BRK[w] || w;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -253,6 +241,74 @@ function liiUrl(ident) {
   const m = /^\/us\/usc\/t(\d+)\/s([^/]+)/.exec(ident);
   return m ? `https://www.law.cornell.edu/uscode/text/${+m[1]}/${m[2].replace(/–/g, "-")}` : null;
 }
+// Title order: 1, 2, …, 5, 5a, …; then citations in numeric order.
+function natKey(t) { const m = /^(\d+)(.*)$/.exec(t); return m ? [+m[1], m[2]] : [1e9, t]; }
+function cmpTitle(a, b) { const x = natKey(a), y = natKey(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0); }
+const cmpIdent = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+function titleOptions(titles) {
+  return [...titles].sort(cmpTitle).map(t => `<option value="${esc(t)}">Title ${esc(t.replace(/^0+/, ""))}</option>`).join("");
+}
+
+/* ---------- condensed chapeaus, laid out as their nested structure (negconj.outline) ---------- */
+// parts[i] is word i's HTML and gaps[i] the HTML of the space after it; breaks are [word index,
+// depth, label] where a line of the outline starts. Without breaks the sentence is one paragraph.
+function layoutText(parts, gaps, breaks) {
+  const run = (a, b) => parts.slice(a, b).map((p, k) => p + (a + k < b - 1 ? gaps[a + k] : "")).join("");
+  if (!breaks || !breaks.length) return run(0, parts.length);
+  const bs = breaks[0][0] > 0 ? [[0, breaks[0][1], ""], ...breaks] : breaks;
+  return bs.map(([start, depth, label], k) => `<div class="ol" style="--d:${depth}">` +
+    (label ? `<span class="olnum">${esc(label)}</span> ` : "") + run(start, k + 1 < bs.length ? bs[k + 1][0] : parts.length) + `</div>`).join("");
+}
+
+/* ---------- text width (for drawing) ---------- */
+let measureCtx;
+function tw(s, font = "12px 'IBM Plex Mono', monospace") { measureCtx = measureCtx || document.createElement("canvas").getContext("2d"); measureCtx.font = font; return measureCtx.measureText(s).width; }
+
+/* ---------- reviews, kept in this browser's localStorage ---------- */
+const REVIEW_LABEL = { yes: "✓ yes", no: "✗ no", unsure: "? unsure" };
+function loadReviews(key, legacy = () => ({})) {
+  try { return JSON.parse(localStorage.getItem(key) || "null") || legacy(); } catch (e) { return {}; }
+}
+function storeReviews(key, reviews) { try { localStorage.setItem(key, JSON.stringify(reviews)); } catch (e) { /* storage unavailable */ } }
+const csvCell = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
+function downloadCsv(name, lines) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- keyboard: j/k (or arrows) step through the list, 1/2/3 set the review mark ---------- */
+function bindKeys(step, mark) {
+  document.addEventListener("keydown", e => {
+    if (e.target.closest("input, textarea, select") || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === "j" || e.key === "ArrowDown") { step(1); e.preventDefault(); }
+    else if (e.key === "k" || e.key === "ArrowUp") { step(-1); e.preventDefault(); }
+    else if (e.key === "1") mark("yes"); else if (e.key === "2") mark("no"); else if (e.key === "3") mark("unsure");
+  });
+}
+</script>
+<script>
+/* Data: per connective, data/{conn}/index.js (sentences, flags, pairs) loaded at start, and
+   data/{conn}/trees-{title}.js loaded when a sentence of that title is opened. Plain script
+   files, so this page also works when opened from disk. */
+const DATASETS = ["and","or"];
+const META = {}, TREES = {};
+let ROWS = [];
+const NEG = {
+  index(conn, d) {
+    META[conn] = d;
+    d.rows.forEach((r, n) => ROWS.push({ ds: conn, n, key: conn + "|" + r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3],
+      toks: r[4].split(" "), tree: null, flagged: r[5], relaxed: r[6], pairs: r[7].map(p => ({ not: p[0], and: p[1], notParent: p[2],
+      notRelaxedParent: p[3], coord: p[4], conj: p[5], dist: p[6], strict: p[7], rel: p[8], inIf: p[9] })), breaks: r[8] || [] }));
+  },
+  trees(conn, title, map) { TREES[conn + "|" + title] = map; },
+};
+async function ensureTree(r) {
+  if (r.tree) return;
+  const k = r.ds + "|" + r.title;
+  if (!TREES[k]) await loadScript(`data/${r.ds}/trees-${r.title}.js`);
+  r.tree = TREES[k][r.id];
+}
+const CONN = { and: { word: "and", label: "Negative conjunction", short: "negconj" }, or: { word: "or", label: "Negative disjunction", short: "negdisj" } };
 
 /* ---------- trees ---------- */
 const treeCache = new Map();
@@ -308,29 +364,23 @@ function ifPairs(row) {
 // Reviews are keyed "{conn}|{sent_id}". Marks made in the earlier single-dataset viewer (which
 // covered not … and only) are carried over once.
 const KEY = "negconj-review:v2";
-let reviews = {};
-try {
-  reviews = JSON.parse(localStorage.getItem(KEY) || "null");
-  if (!reviews) {
-    reviews = {};
-    for (const old of ["negconj-review:results_full_partial", "negconj-review:results"]) {
-      const o = JSON.parse(localStorage.getItem(old) || "{}"); for (const [id, v] of Object.entries(o)) reviews["and|" + id] = v;
-    }
+let reviews = loadReviews(KEY, () => {
+  const r = {};
+  for (const old of ["negconj-review:results_full_partial", "negconj-review:results"]) {
+    const o = JSON.parse(localStorage.getItem(old) || "{}"); for (const [id, v] of Object.entries(o)) r["and|" + id] = v;
   }
-} catch (e) { reviews = {}; }
-function saveReviews() { try { localStorage.setItem(KEY, JSON.stringify(reviews)); } catch (e) { /* storage unavailable */ } }
+  return r;
+});
+function saveReviews() { storeReviews(KEY, reviews); }
 const st = { ds: "", clause: "if", q: "", title: "", src: "", review: "", coord: "", limit: 300, sel: null, pair: 0, view: "focus", expandAll: false, open: new Set() };
 const byKey = new Map();
 const findRow = k => byKey.get(k);
 
 /* ---------- header + filters ---------- */
-function natKey(t) { const m = /^(\d+)(.*)$/.exec(t); return m ? [+m[1], m[2]] : [1e9, t]; }
 function setup() {
   // Both datasets interleaved by title, then citation, so a provision's and- and or-hits sit together;
   // within a dataset, document order.
-  const cmpIdent = (a, b) => a.localeCompare(b, undefined, { numeric: true });
-  ROWS.sort((a, b) => { const x = natKey(a.title), y = natKey(b.title);
-    return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || cmpIdent(a.ident, b.ident) || (a.ds < b.ds ? -1 : a.ds > b.ds ? 1 : a.n - b.n); });
+  ROWS.sort((a, b) => cmpTitle(a.title, b.title) || cmpIdent(a.ident, b.ident) || (a.ds < b.ds ? -1 : a.ds > b.ds ? 1 : a.n - b.n));
   ROWS.forEach(r => byKey.set(r.key, r));
   const ms = DATASETS.map(c => META[c]).filter(Boolean);
   const m0 = (ms[0] || {}).manifest || {};
@@ -338,8 +388,7 @@ function setup() {
   $("f-ds").innerHTML = (ms.length > 1 ? `<option value="">Both (and, or)</option>` : "") +
     ms.map(d => `<option value="${d.conn}">not … ${d.conn} · ${esc(d.label.toLowerCase())}</option>`).join("");
   st.ds = $("f-ds").value;
-  const titles = [...new Set(ROWS.map(r => r.title))].sort((a, b) => { const x = natKey(a), y = natKey(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : 1); });
-  $("f-title").insertAdjacentHTML("beforeend", titles.map(t => `<option value="${esc(t)}">Title ${esc(t.replace(/^0+/, ""))}</option>`).join(""));
+  $("f-title").insertAdjacentHTML("beforeend", titleOptions(new Set(ROWS.map(r => r.title))));
   const srcs = [...new Set(ROWS.map(r => r.src))].sort();
   $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
   $("chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; st.coord = st.coord === b.dataset.c ? "" : b.dataset.c; refresh(); });
@@ -379,7 +428,6 @@ function snippetFull(r) {
   const span = (a, b) => { const out = []; for (let i = Math.max(0, a); i < Math.min(r.toks.length, b); i++) { const c = mark(i); out.push(c ? `<span style="color:var(--${c});font-weight:600">${esc(word(r.toks[i]))}</span>` : esc(word(r.toks[i]))); } return out.join(" "); };
   return p.and - p.not <= 12 && p.and > p.not ? span(p.not - 4, p.and + 5) : span(p.not - 4, p.not + 5) + ` <span class="gap">…</span> ` + span(p.and - 4, p.and + 5);
 }
-const REVIEW_LABEL = { yes: "✓ yes", no: "✗ no", unsure: "? unsure" };
 
 let filtered = [];
 function refresh() {
@@ -421,7 +469,8 @@ function renderDetail() {
   const vp = nodes && p.strict ? nodes.negVP : null;
   const ifc = p ? ifClauseOf(r, p) : null;
   const inVP = i => vp && i >= vp.lo && i <= vp.hi, inCo = i => nodes && i >= nodes.coord.lo && i <= nodes.coord.hi;
-  const textHtml = r.toks.map((w, i) => {
+  const parts = [], gaps = [];
+  r.toks.forEach((w, i) => {
     const cls = [];
     if (inVP(i)) cls.push("t-vp");
     if (inCo(i)) cls.push("t-coord");
@@ -430,11 +479,12 @@ function renderDetail() {
     let tok = cls.length ? `<span class="${cls.join(" ")}">${esc(word(w))}</span>` : esc(word(w));
     if (ifc && i === ifc.lo) tok = `<span class="t-if">⟦</span>` + tok;
     if (ifc && i === ifc.hi) tok = tok + `<span class="t-if">⟧</span>`;
-    if (i === r.toks.length - 1) return tok;
+    parts.push(tok);
     // the space after a token joins the shading when both neighbours share it
     const sc = [inVP(i) && inVP(i + 1) ? "t-vp" : "", inCo(i) && inCo(i + 1) ? "t-coord" : ""].filter(Boolean);
-    return tok + (sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
-  }).join("");
+    gaps.push(sc.length ? `<span class="${sc.join(" ")}"> </span>` : " ");
+  });
+  const textHtml = layoutText(parts, gaps, r.breaks);
   const strictN = r.pairs.filter(q => q.strict).length;
   const pairRows = r.pairs.map((q, i) => {
     const a = Math.max(0, q.not - 2), b = Math.min(r.toks.length, q.not + 3), c = Math.max(0, q.and - 2), d = Math.min(r.toks.length, q.and + 3);
@@ -491,16 +541,13 @@ function setMark(m) {
   if (row) { const old = row.querySelector(".rv"); if (old) old.remove(); const v = reviews[r.key].mark; if (v) row.insertAdjacentHTML("beforeend", `<span class="rv">${REVIEW_LABEL[v]}</span>`); }
 }
 function exportCsv() {
-  const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const q = csvCell;
   const lines = [["connective", "sent_id", "citation", "identifier", "flagged", "review", "notes"].join(",")];
   ROWS.forEach(r => { const v = reviews[r.key]; if (v && (v.mark || v.note)) lines.push([r.ds, q(r.id), q(citation(r.ident)), q(r.ident), r.flagged, q(v.mark || ""), q(v.note || "")].join(",")); });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
-  a.download = `negated_connective_reviews.csv`; document.body.appendChild(a); a.click(); a.remove();
+  downloadCsv("negated_connective_reviews.csv", lines);
 }
 
 /* ---------- pair view (SVG) ---------- */
-let measureCtx;
-function tw(s, font = "12px 'IBM Plex Mono', monospace") { measureCtx = measureCtx || document.createElement("canvas").getContext("2d"); measureCtx.font = font; return measureCtx.measureText(s).width; }
 function drawFocus(r, p, nodes) {
   const ifc = ifClauseOf(r, p);
   const top = ifc || nodes.top; const nLeaves = top.hi - top.lo + 1;
@@ -563,13 +610,11 @@ function drawOutline(r, p, nodes) {
 }
 
 /* ---------- keyboard ---------- */
-document.addEventListener("keydown", e => {
-  if (e.target.closest("input, textarea, select") || e.metaKey || e.ctrlKey || e.altKey) return;
+bindKeys(d => {
   const i = filtered.findIndex(r => r.key === st.sel);
-  if (e.key === "j" || e.key === "ArrowDown") { if (i < filtered.length - 1) { if (i + 1 >= st.limit) { st.limit += 300; refresh(); } select(filtered[i + 1].key); } e.preventDefault(); }
-  else if (e.key === "k" || e.key === "ArrowUp") { if (i > 0) select(filtered[i - 1].key); e.preventDefault(); }
-  else if (e.key === "1") setMark("yes"); else if (e.key === "2") setMark("no"); else if (e.key === "3") setMark("unsure");
-});
+  if (d > 0 && i < filtered.length - 1) { if (i + 1 >= st.limit) { st.limit += 300; refresh(); } select(filtered[i + 1].key); }
+  else if (d < 0 && i > 0) select(filtered[i - 1].key);
+}, setMark);
 
 Promise.allSettled(DATASETS.map(c => loadScript(`data/${c}/index.js`))).then(res => {
   const bad = res.map((x, i) => x.status === "rejected" ? DATASETS[i] : null).filter(Boolean);
