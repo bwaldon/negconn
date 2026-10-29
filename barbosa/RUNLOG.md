@@ -79,6 +79,12 @@ order, N2 not itself framed) stay.
   *an alien lawfully admitted for permanent residence*) and § 1151(f)(2), (3). 18 U.S.C.
   § 3553(f) (Pulsifer) matches too.
 
+- Dashboard toggle (user request): the same-head condition can be switched off in the page, which
+  recomputes each sentence's best candidate, match and near-miss status from the candidates' five
+  condition bits. On: 45 / 23, identical to the run for all 1,987 sentences (best candidate and
+  verdict). Off: 132 matches, 88 near misses (3 of the 4 other conditions; best candidate chosen by
+  those four, hence one more than the 87 of the c6e163f run).
+
 ## Dashboard
 - `python -m barbosa.build_dashboard --results barbosa/results --out site/1225b`: 1,987 rows,
   `data/index.js` 2.9 MB, `data/parses-{title}.js` 26.6 MB in total. Published as

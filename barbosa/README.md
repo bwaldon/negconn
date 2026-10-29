@@ -18,7 +18,9 @@ with the phrase and the *if*-clause modifying the same head, as in the provision
 **Dashboard:** <https://bwaldon.github.io/negconn/1225b/>. Every sentence the RA's linear queries
 find, with its dependency parse. By default the list shows the sentences the dependency query
 matches; it can also show near misses (same head, four of the five conditions) or everything,
-filtered by the condition not met, the linear query, title, unit type or text. Condensed chapeaus
+filtered by the condition not met, the linear query, title, unit type or text. A checkbox turns
+the same-head condition off, to see the sentences where the phrase and the *if*-clause attach to
+different heads (matches and near misses are then recomputed in the page). Condensed chapeaus
 are laid out with their nested structure ((1), (A), (i), …). Review marks are saved in the browser
 and can be exported as CSV.
 
@@ -103,6 +105,7 @@ candidate's conditions), `candidates.parquet` (every candidate), `matches.csv`/`
 | … with N1's noun repeated as an indefinite NP in the if-clause | 68 |
 | **match** (… with different modifiers) | **45** |
 | near misses (all but different modifiers) | 23 |
+| *same-head condition off (dashboard checkbox):* matches / near misses | 132 / 88 |
 
 8 U.S.C. § 1225(b)(2)(A) matches; so do, e.g., 8 U.S.C. § 1229b(a), 8 U.S.C. § 1151(f)(2)–(3)
 and 18 U.S.C. § 3553(f). *In the case of* accounts for 36 of the matches and *with respect to*
