@@ -1,4 +1,5 @@
-"""The dependency query: sentences shaped like 8 U.S.C. § 1225(b)(2)(A).
+"""The dependency query: sentences shaped like 8 U.S.C. § 1225(b)(2)(A), and its variant with the
+phrase inside the if-clause.
 
     Subject to subparagraphs (B) and (C), in the case of [an alien]N1 [who is an applicant for
     admission]mod1, if the examining immigration officer determines that [an alien]N2 [seeking
@@ -24,17 +25,19 @@ frame          the lowest word dominating both the first word of the frame phras
                "in the case of an alien", "case"; for "with respect to an alien" parsed as a
                fixed expression, N1 itself.
 governor       the frame's head (what the frame phrase modifies).
-if-clause      a word "if" attached as ``mark``, after N1's determiner; the clause is its head H
-               and everything H dominates.
+if-clause      a word "if" attached as ``mark``; the clause is its head H and everything H
+               dominates.
 modifier       a dependent of a noun whose relation is amod, acl (acl:relcl, …), nmod (nmod:*,
                …) or compound. A noun's modifier text is every word its modifiers dominate, in
                sentence order, so the same words attached differently compare as equal.
 
-Conditions, checked for every (frame phrase, if) candidate in a sentence
-------------------------------------------------------------------------
+Patterns and their conditions, checked for every (frame phrase, if) candidate in a sentence
+-----------------------------------------------------------------------------------------
+``outside``: the phrase comes before the if-clause, as in the provision (an "if" after N1's
+determiner):
+
 frame_np        the frame phrase introduces an indefinite noun phrase (N1 exists).
-if_outside      an if-clause comes after N1's determiner and lies outside the frame (H is not
-                dominated by the frame).
+if_outside      the if-clause lies outside the frame (H is not dominated by the frame).
 same_governor   H and the frame are dependents of the same governor: both modify the main
                 clause, as in the provision.
 repeated_np     the if-clause contains another indefinite noun phrase N2 ("a"/"an" as its det)
@@ -43,9 +46,20 @@ repeated_np     the if-clause contains another indefinite noun phrase N2 ("a"/"a
                 over-long if-clause is a new frame, not a repetition inside the condition).
 different_mods  N1 and N2 both have modifiers, and their modifier texts differ.
 
-A sentence matches when one candidate meets all five. Its best candidate is a matching one if
-there is one, else the one meeting the most conditions (ties: the longest run of conditions met
-in the order above, then the earliest).
+``inside``: the phrase is inside the if-clause and comes before the second mention ("If, …
+in the case of a State whose legislature meets only biennially, …, the Director determines that
+a State …"; an "if" before the phrase):
+
+frame_np        as above.
+phrase_in_if    H dominates the frame: the phrase is part of the if-clause.
+repeated_np     as above, with N2 also after N1's determiner and outside the frame (not part of
+                the phrase's own noun phrase).
+different_mods  as above.
+
+A candidate matches when it meets all of its pattern's conditions, and a sentence when one of
+its candidates does. The best candidate is a matching one if there is one, else the one meeting
+the largest share of its pattern's conditions (ties: the longest run of conditions met in order,
+the outside pattern, then the earliest).
 """
 
 from __future__ import annotations
@@ -57,7 +71,11 @@ import pandas as pd
 INDEFINITE = frozenset({"a", "an"})
 NOMINAL = frozenset({"NOUN", "PROPN"})
 MODIFIER_RELS = frozenset({"amod", "acl", "nmod", "compound"})
-CONDITIONS = ("frame_np", "if_outside", "same_governor", "repeated_np", "different_mods")
+PATTERNS = {
+    "outside": ("frame_np", "if_outside", "same_governor", "repeated_np", "different_mods"),
+    "inside": ("frame_np", "phrase_in_if", "repeated_np", "different_mods"),
+}
+CONDITIONS = tuple(dict.fromkeys(k for conds in PATTERNS.values() for k in conds))  # all, in order
 
 
 @dataclass(frozen=True)
@@ -158,7 +176,11 @@ class Candidate:
     det2: int = -1
     mods1: list[int] = field(default_factory=list)
     mods2: list[int] = field(default_factory=list)
-    met: dict = field(default_factory=lambda: dict.fromkeys(CONDITIONS, False))
+    pattern: str = "outside"
+    met: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.met = {k: self.met.get(k, False) for k in PATTERNS[self.pattern]}
 
     @property
     def n_met(self) -> int:
@@ -166,28 +188,31 @@ class Candidate:
 
     @property
     def run(self) -> int:
-        """How many conditions hold in a row, in CONDITIONS order."""
-        k = 0
-        while k < len(CONDITIONS) and self.met[CONDITIONS[k]]:
+        """How many of its pattern's conditions hold in a row, in order."""
+        k, conds = 0, PATTERNS[self.pattern]
+        while k < len(conds) and self.met[conds[k]]:
             k += 1
         return k
 
     @property
     def matches(self) -> bool:
-        return self.n_met == len(CONDITIONS)
+        return self.n_met == len(self.met)
 
 
 def _mod_text(t: DepTree, mods: list[int]) -> str:
     return t.text(sorted(i for m in mods for i in t.subtree(m))).lower()
 
 
-def _repeat(t: DepTree, n1: int, if_head: int, framed: set[int]) -> tuple[int, int]:
+def _repeat(t: DepTree, n1: int, if_head: int, framed: set[int], exclude: frozenset[int] = frozenset(),
+            after: int = -1) -> tuple[int, int]:
     """Best N2 for N1 inside the if-clause: (n2, det2), preferring one with modifiers that
-    differ from N1's; (-1, -1) if there is none. Determiners in ``framed`` follow a phrase."""
+    differ from N1's; (-1, -1) if there is none. Determiners in ``framed`` follow a phrase; N2 is
+    not in ``exclude`` and its determiner comes after ``after``."""
     lemma = t.words[n1].lemma.lower()
     found = [(n, t.indefinite_det(n)) for n in t.subtree(if_head)
-             if n != n1 and t.words[n].upos in NOMINAL and t.words[n].lemma.lower() == lemma
-             and t.indefinite_det(n) >= 0 and t.indefinite_det(n) not in framed]
+             if n != n1 and n not in exclude and t.words[n].upos in NOMINAL
+             and t.words[n].lemma.lower() == lemma and t.indefinite_det(n) > after
+             and t.indefinite_det(n) not in framed]
     if not found:
         return -1, -1
     m1 = _mod_text(t, t.modifiers(n1))
@@ -210,31 +235,39 @@ def candidates(t: DepTree, phrases: dict[str, tuple[str, ...]]) -> list[Candidat
             out.append(Candidate(**base))
             continue
         frame = t.lca(i, n1)
-        later = [m for m in marks if m > i + k] or [-1]
-        for m in later:
-            c = Candidate(**base, n1=n1, frame=frame, governor=t.head(frame), mark=m,
-                          mods1=t.modifiers(n1))
-            c.met["frame_np"] = True
-            if m >= 0:
-                c.if_head = t.head(m)
-                c.met["if_outside"] = c.if_head >= 0 and not t.dominates(frame, c.if_head)
-                c.met["same_governor"] = (c.governor >= 0 and c.if_head not in (-1, frame)
-                                          and t.head(c.if_head) == c.governor)
-                if c.if_head >= 0:
-                    c.n2, c.det2 = _repeat(t, n1, c.if_head, framed)
-                c.met["repeated_np"] = c.n2 >= 0
-                if c.n2 >= 0:
-                    c.mods2 = t.modifiers(c.n2)
-                    c.met["different_mods"] = bool(c.mods1 and c.mods2) and (
-                        _mod_text(t, c.mods1) != _mod_text(t, c.mods2))
-            out.append(c)
+        inner = frozenset(t.subtree(frame))
+        for pattern, ms in (("outside", [m for m in marks if m > i + k] or [-1]),
+                            ("inside", [m for m in marks if m < i])):
+            for m in ms:
+                c = Candidate(**base, n1=n1, frame=frame, governor=t.head(frame), mark=m,
+                              mods1=t.modifiers(n1), pattern=pattern)
+                c.met["frame_np"] = True
+                if m >= 0:
+                    c.if_head = t.head(m)
+                    if pattern == "outside":
+                        c.met["if_outside"] = c.if_head >= 0 and not t.dominates(frame, c.if_head)
+                        c.met["same_governor"] = (c.governor >= 0 and c.if_head not in (-1, frame)
+                                                  and t.head(c.if_head) == c.governor)
+                        if c.if_head >= 0:
+                            c.n2, c.det2 = _repeat(t, n1, c.if_head, framed)
+                    else:
+                        c.met["phrase_in_if"] = c.if_head >= 0 and t.dominates(c.if_head, frame)
+                        if c.if_head >= 0:
+                            c.n2, c.det2 = _repeat(t, n1, c.if_head, framed, exclude=inner, after=i + k)
+                    c.met["repeated_np"] = c.n2 >= 0
+                    if c.n2 >= 0:
+                        c.mods2 = t.modifiers(c.n2)
+                        c.met["different_mods"] = bool(c.mods1 and c.mods2) and (
+                            _mod_text(t, c.mods1) != _mod_text(t, c.mods2))
+                out.append(c)
     return out
 
 
 def best(cands: list[Candidate]) -> Candidate | None:
     if not cands:
         return None
-    return max(cands, key=lambda c: (c.n_met, c.run, -c.phrase[0], -c.mark))
+    return max(cands, key=lambda c: (c.matches, c.n_met / len(c.met), c.run / len(c.met),
+                                     c.pattern == "outside", -c.phrase[0], -c.mark))
 
 
 # --------------------------------------------------------------------------
@@ -251,14 +284,16 @@ def _span(t: DepTree, i: int) -> list[int]:
 
 def candidate_row(sent_id: str, t: DepTree, c: Candidate) -> dict:
     return {
-        "sent_id": sent_id, "query": c.query, "phrase_start": c.phrase[0], "phrase_end": c.phrase[1],
+        "sent_id": sent_id, "query": c.query, "pattern": c.pattern,
+        "phrase_start": c.phrase[0], "phrase_end": c.phrase[1],
         "det1": c.det1, "n1": c.n1, "frame": c.frame, "governor": c.governor, "mark": c.mark,
         "if_head": c.if_head, "n2": c.n2, "det2": c.det2,
         "n1_lemma": t.words[c.n1].lemma if c.n1 >= 0 else None,
         "mods1": [_span(t, m) for m in c.mods1], "mods2": [_span(t, m) for m in c.mods2],
         "frame_span": _span(t, c.frame), "if_span": _span(t, c.if_head),
         "if_deprel": t.words[c.if_head].deprel if c.if_head >= 0 else None,
-        **c.met, "n_met": c.n_met, "matches": c.matches,
+        **{k: c.met.get(k, False) for k in CONDITIONS}, "n_met": c.n_met, "n_conditions": len(c.met),
+        "matches": c.matches,
     }
 
 
@@ -274,14 +309,18 @@ def classify_conllu(sent_id: str, conllu: str,
     b = best(cands)
     summary = {"sent_id": sent_id, "n_words": len(t), "n_candidates": len(cands),
                "matches": any(c.matches for c in cands),
+               **{f"matches_{p}": any(c.matches and c.pattern == p for c in cands) for p in PATTERNS},
                "best": cands.index(b) if b is not None else -1,
-               **{f"best_{k}": (b.met[k] if b is not None else False) for k in CONDITIONS},
-               "best_n_met": b.n_met if b is not None else 0}
+               "best_pattern": b.pattern if b is not None else None,
+               **{f"best_{k}": (b.met.get(k, False) if b is not None else False) for k in CONDITIONS},
+               "best_n_met": b.n_met if b is not None else 0,
+               "best_n_conditions": len(b.met) if b is not None else 0}
     return rows, summary
 
 
-SENTENCE_COLUMNS = ["sent_id", "n_words", "n_candidates", "matches", "best",
-                    *[f"best_{k}" for k in CONDITIONS], "best_n_met"]
+SENTENCE_COLUMNS = ["sent_id", "n_words", "n_candidates", "matches",
+                    *[f"matches_{p}" for p in PATTERNS], "best", "best_pattern",
+                    *[f"best_{k}" for k in CONDITIONS], "best_n_met", "best_n_conditions"]
 
 
 def classify_frame(parses: pd.DataFrame,

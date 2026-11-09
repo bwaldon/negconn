@@ -21,17 +21,19 @@ from negconj.dashboard import manifest_meta, render_page, write_call
 from negconj.outline import load_outlines, sentence_breaks
 from negconj.util import title_sort_key
 
-from .depquery import CONDITIONS, read_conllu
-from .study import PROVISION, QUERIES, CONDITION_TEXT
+from .depquery import PATTERNS, read_conllu
+from .study import ALL_QUERIES, CONDITION_TEXT, PATTERN_TEXT, PROVISION, SOURCE
 
 HERE = Path(__file__).resolve().parent
-QUERY_INDEX = {qid: i for i, (qid, _, _) in enumerate(QUERIES)}
+QUERY_INDEX = {qid: i for i, (qid, _, _) in enumerate(ALL_QUERIES)}
+PATTERN_INDEX = {p: i for i, p in enumerate(PATTERNS)}
 ROLE_COLUMNS = ["phrase_start", "phrase_end", "det1", "n1", "frame", "governor", "mark", "if_head",
                 "n2", "det2"]
 
 
 def _bits(c) -> int:
-    return sum(1 << k for k, name in enumerate(CONDITIONS) if bool(c[name]))
+    """Conditions met, over the candidate's pattern's conditions in order."""
+    return sum(1 << k for k, name in enumerate(PATTERNS[c["pattern"]]) if bool(c[name]))
 
 
 def _spans(v) -> list[list[int]]:
@@ -49,7 +51,7 @@ def build(results: Path, out: Path) -> dict:
         words = [w.form for w in read_conllu(r.conllu).words]
         unit_text, outline = outlines.get(r.unit_id, ("", None))
         cs = [[QUERY_INDEX[c.query], *(int(getattr(c, k)) for k in ROLE_COLUMNS),
-               _spans(c.mods1), _spans(c.mods2), _bits(c._asdict())]
+               _spans(c.mods1), _spans(c.mods2), _bits(c._asdict()), PATTERN_INDEX[c.pattern]]
               for c in by_sent[r.sent_id].itertuples(index=False)] if r.sent_id in by_sent else []
         rows.append([r.sent_id, str(r.title), r.identifier, r.elem_source, " ".join(words),
                      [QUERY_INDEX[q] for q in r.queries], bool(r.matches), int(r.best_n_met),
@@ -58,8 +60,9 @@ def build(results: Path, out: Path) -> dict:
         parses.setdefault(str(r.title), {})[r.sent_id] = r.conllu
     d = out / "data"
     meta = {"run": results.resolve().name, "manifest": manifest_meta(results), "provision": PROVISION,
-            "queries": [[qid, q, phrase] for qid, q, phrase in QUERIES],
-            "conditions": [[k, CONDITION_TEXT[k]] for k in CONDITIONS],
+            "queries": [[qid, q, phrase, SOURCE[qid]] for qid, q, phrase in ALL_QUERIES],
+            "patterns": [[p, PATTERN_TEXT[p], [[k, CONDITION_TEXT[p][k]] for k in conds]]
+                         for p, conds in PATTERNS.items()],
             "n_failures": len(fails), "titles": sorted(parses, key=title_sort_key)}
     write_call(d / "index.js", "DEP.index", {**meta, "rows": rows})
     for title, pmap in parses.items():
@@ -67,6 +70,7 @@ def build(results: Path, out: Path) -> dict:
     render_page(HERE / "dashboard_template.html", out / "index.html", ["1225b"])
     sizes = {p.name: p.stat().st_size for p in d.iterdir()}
     return {"rows": len(rows), "matches": int(cls["matches"].sum()),
+            **{f"matches_{p}": int(cls[f"matches_{p}"].sum()) for p in PATTERNS},
             "outlined": sum(bool(r[-1]) for r in rows),
             "index_mb": sizes["index.js"] / 1e6,
             "parses_mb": sum(v for k, v in sizes.items() if k.startswith("parses")) / 1e6}

@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 FIXTURE = {r["identifier"]: r for r in json.loads((HERE / "fixtures" / "s1225b2.json").read_text())}
 A = FIXTURE[PROVISION]
 RESULTS = Path(os.environ.get("BARBOSA_RESULTS", HERE.parent / "results"))
+OUT = dq.PATTERNS["outside"]
 
 
 def conllu(rows):
@@ -106,7 +107,7 @@ def test_ids_of_the_fixture():
 
 def test_unmodified_repeat_is_not_different_mods():
     text = edit(A["conllu"], {SEEKING: {6: 43, 7: "advcl"}})  # "seeking" leaves the noun
-    assert met(text) == set(dq.CONDITIONS) - {"different_mods"}
+    assert met(text) == set(OUT) - {"different_mods"}
 
 
 def test_other_noun_is_not_a_repeat():
@@ -121,7 +122,7 @@ def test_if_clause_inside_the_frame():
 
 def test_frame_attached_inside_the_if_clause_is_not_same_governor():
     text = edit(A["conllu"], {CASE: {6: DETERMINES}})
-    assert met(text) == set(dq.CONDITIONS) - {"same_governor"}
+    assert met(text) == set(OUT) - {"same_governor"}
     assert not summary(text)["matches"]
 
 
@@ -143,7 +144,7 @@ PLAN = [("In", "in", "ADP", 3, "case"), ("the", "the", "DET", 3, "det"), ("case"
 
 
 def test_same_modifier_is_not_different():
-    assert met(conllu(PLAN)) == set(dq.CONDITIONS) - {"different_mods"}
+    assert met(conllu(PLAN)) == set(OUT) - {"different_mods"}
     other = list(PLAN)
     other[10] = ("qualified", "qualified", "ADJ", 12, "amod")
     assert summary(conllu(other))["matches"]
@@ -162,7 +163,7 @@ CREDIT = [("In", "in", "ADP", 3, "case"), ("the", "the", "DET", 3, "det"), ("cas
 
 def test_same_modifier_words_attached_differently():
     """N1 has 'of credit' and 'secured by land' as two modifiers, N2 one modifier with both: same words."""
-    assert met(conllu(CREDIT)) == set(dq.CONDITIONS) - {"different_mods"}
+    assert met(conllu(CREDIT)) == set(OUT) - {"different_mods"}
     other = list(CREDIT)
     other[19] = ("water", "water", "NOUN", 18, "obl")
     assert summary(conllu(other))["matches"]
@@ -203,7 +204,7 @@ def test_best_candidate():
     early = cand(0, 10, ["frame_np", "repeated_np", "different_mods"])     # 3 met, run 1
     late = cand(0, 20, ["frame_np", "if_outside", "same_governor"])       # 3 met, run 3
     four = cand(0, 30, ["frame_np", "if_outside", "repeated_np", "different_mods"])
-    full = cand(30, 40, dq.CONDITIONS)
+    full = cand(30, 40, OUT)
     assert dq.best([early, late]) is late
     assert dq.best([early, late, four]) is four and not four.matches
     assert dq.best([early, late, four, full]) is full and full.matches
@@ -216,6 +217,52 @@ def test_classify_frame_columns():
     cands, sents = dq.classify_frame(parses, PHRASES)
     assert list(cands.columns) == dq.CANDIDATE_COLUMNS and len(cands) == 2
     assert sents["matches"].tolist() == [True, False] and sents["best_n_met"].tolist() == [5, 1]
+
+
+# The phrase inside the if-clause: "If, in the case of an alien who is detained, the officer finds
+# that an alien seeking admission is eligible, the alien shall be released."
+INSIDE = [("If", "if", "SCONJ", 15, "mark"), (",", ",", "PUNCT", 5, "punct"), ("in", "in", "ADP", 5, "case"),
+          ("the", "the", "DET", 5, "det"), ("case", "case", "NOUN", 15, "obl"), ("of", "of", "ADP", 8, "case"),
+          ("an", "a", "DET", 8, "det"), ("alien", "alien", "NOUN", 5, "nmod"), ("who", "who", "PRON", 11, "nsubj:pass"),
+          ("is", "be", "AUX", 11, "aux:pass"), ("detained", "detain", "VERB", 8, "acl:relcl"), (",", ",", "PUNCT", 5, "punct"),
+          ("the", "the", "DET", 14, "det"), ("officer", "officer", "NOUN", 15, "nsubj"), ("finds", "find", "VERB", 28, "advcl"),
+          ("that", "that", "SCONJ", 22, "mark"), ("an", "a", "DET", 18, "det"), ("alien", "alien", "NOUN", 22, "nsubj"),
+          ("seeking", "seek", "VERB", 18, "acl"), ("admission", "admission", "NOUN", 19, "obj"), ("is", "be", "AUX", 22, "cop"),
+          ("eligible", "eligible", "ADJ", 15, "ccomp"), (",", ",", "PUNCT", 15, "punct"), ("the", "the", "DET", 25, "det"),
+          ("alien", "alien", "NOUN", 28, "nsubj:pass"), ("shall", "shall", "AUX", 28, "aux"), ("be", "be", "AUX", 28, "aux:pass"),
+          ("released", "release", "VERB", 0, "root"), (".", ".", "PUNCT", 28, "punct")]
+
+
+def test_phrase_inside_the_if_clause():
+    rows, s = dq.classify_conllu("i", conllu(INSIDE), PHRASES)
+    assert s["matches"] and s["matches_inside"] and not s["matches_outside"]
+    b = rows[s["best"]]
+    assert b["pattern"] == "inside" and b["n_met"] == b["n_conditions"] == 4
+    assert (b["mark"], b["frame"], b["if_head"], b["n1"], b["n2"]) == (0, 4, 14, 7, 17)
+    # the outside candidate (no "if" after the phrase) stops after frame_np
+    assert [r["n_met"] for r in rows if r["pattern"] == "outside"] == [1]
+
+
+def test_inside_needs_the_phrase_under_the_if_clause_and_a_later_repeat():
+    moved = list(INSIDE)
+    moved[4] = ("case", "case", "NOUN", 28, "obl")  # the phrase modifies "released", not "finds"
+    rows, s = dq.classify_conllu("m", conllu(moved), PHRASES)
+    inside = [r for r in rows if r["pattern"] == "inside"]
+    assert not s["matches"] and not inside[0]["phrase_in_if"] and inside[0]["repeated_np"]
+    other = list(INSIDE)
+    other[17] = ("individual", "individual", "NOUN", 22, "nsubj")
+    rows, s = dq.classify_conllu("o", conllu(other), PHRASES)
+    assert not s["matches"] and [r["repeated_np"] for r in rows if r["pattern"] == "inside"] == [False]
+
+
+def test_repeat_inside_the_phrase_does_not_count():
+    """N2 inside N1's own modifier ("an alien who is an alien …") is part of the phrase."""
+    inner = list(INSIDE)
+    inner[17] = ("person", "person", "NOUN", 22, "nsubj")
+    inner[10] = ("alien", "alien", "NOUN", 8, "acl:relcl")
+    inner[9] = ("an", "a", "DET", 11, "det")
+    rows, s = dq.classify_conllu("x", conllu(inner), PHRASES)
+    assert not s["matches_inside"]
 
 
 # --------------------------------------------------------------------------

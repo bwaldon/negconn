@@ -1,8 +1,10 @@
 """The 1225b study: U.S. Code sentences shaped like 8 U.S.C. § 1225(b)(2)(A).
 
-Candidates are the sentences matching any of the RA's nine Westlaw queries (QUERIES). Each is
-dependency-parsed (Stanza, UD; parser "electra-dep") and the dependency query
-(barbosa.depquery) checks the structure:
+Candidates are the sentences matching any of the RA's nine Westlaw queries (QUERIES), or their
+mirror images with the "if" first (MIRRORED, ours: they find the phrase inside an if-clause).
+Each is dependency-parsed (Stanza, UD; parser "electra-dep") and the dependency query
+(barbosa.depquery) checks the structure, in two patterns: the phrase before the if-clause, as in
+the provision, or inside it. The provision's own pattern:
 
 1. a phrase like "in the case of" followed by an indefinite noun phrase ("an alien who is an
    applicant for admission"), and
@@ -47,17 +49,31 @@ QUERIES = [
 PHRASES = {qid: tuple(phrase.split()) for qid, _, phrase in QUERIES}
 
 
+def _mirror(query: str) -> str:
+    """'adv: (P) +s if +s (a OR an)' -> 'adv: if +s (P) +s (a OR an)'."""
+    m = re.fullmatch(r"adv: (\(.*\)) \+s if \+s \(a OR an\)", query)
+    return f"adv: if +s {m.group(1)} +s (a OR an)"
+
+
+# The same phrases with the "if" first, for the phrase inside an if-clause (not the RA's).
+MIRRORED = [(f"if_{qid}", _mirror(q), phrase) for qid, q, phrase in QUERIES]
+ALL_QUERIES = QUERIES + MIRRORED
+SOURCE = {qid: "RA" for qid, _, _ in QUERIES} | {qid: "mirrored" for qid, _, _ in MIRRORED}
+
+
 def _phrase_re(phrase: str) -> str:
     return r"\s+".join(map(re.escape, phrase.split()))
 
 
-def query_re(phrase: str) -> re.Pattern:
-    return re.compile(rf"\b{_phrase_re(phrase)}\s+an?\b.*\bif\b.*\ban?\b", re.IGNORECASE | re.DOTALL)
+def query_re(phrase: str, if_first: bool = False) -> re.Pattern:
+    p = rf"\b{_phrase_re(phrase)}\s+an?\b"
+    body = rf"\bif\b.*{p}.*\ban?\b" if if_first else rf"{p}.*\bif\b.*\ban?\b"
+    return re.compile(body, re.IGNORECASE | re.DOTALL)
 
 
-QUERY_RES = {qid: query_re(phrase) for qid, _, phrase in QUERIES}
-ANY_QUERY = re.compile(rf"\b(?:{'|'.join(_phrase_re(p) for _, _, p in QUERIES)})\s+an?\b.*\bif\b.*\ban?\b",
-                       re.IGNORECASE | re.DOTALL)
+QUERY_RES = {qid: query_re(phrase, SOURCE[qid] == "mirrored") for qid, _, phrase in ALL_QUERIES}
+_ALT = rf"\b(?:{'|'.join(_phrase_re(p) for _, _, p in QUERIES)})\s+an?\b"
+ANY_QUERY = re.compile(rf"{_ALT}.*\bif\b.*\ban?\b|\bif\b.*{_ALT}.*\ban?\b", re.IGNORECASE | re.DOTALL)
 
 
 def queries_matching(text: str) -> list[str]:
@@ -90,33 +106,46 @@ def classify_stage(root: Path) -> dict:
     atomic_write_parquet(hits, res / "matches.parquet")
     atomic_write_csv(hits.drop(columns="conllu"), res / "matches.csv")
     return {"candidates": len(cands), "dep_query_matches": len(hits),
+            **{f"dep_query_matches_{p}": int(sents[f"matches_{p}"].sum()) for p in depquery.PATTERNS},
             "near_misses": int(near_misses(sents).sum())}
 
 
 def near_misses(sents: pd.DataFrame) -> pd.Series:
-    """Sentences that do not match but whose best candidate has the provision's shape (the phrase
-    and the if-clause modify the same head) and meets all but one of the other conditions; in
-    practice, a repeated noun whose modifiers are the same or missing."""
-    return (~sents["matches"] & sents["best_same_governor"]
-            & (sents["best_n_met"] == len(depquery.CONDITIONS) - 1))
+    """Sentences that do not match but whose best candidate meets all but one of its pattern's
+    conditions, with the same head for the outside pattern (the phrase and the if-clause modify
+    the same head)."""
+    return (~sents["matches"] & (sents["best_n_met"] == sents["best_n_conditions"] - 1)
+            & ((sents["best_pattern"] != "outside") | sents["best_same_governor"]))
 
 
 # --------------------------------------------------------------------------
 # Report
 # --------------------------------------------------------------------------
 
+PATTERN_TEXT = {
+    "outside": "the phrase before the if-clause (as in § 1225(b)(2)(A))",
+    "inside": "the phrase inside the if-clause, before the repeated noun",
+}
 CONDITION_TEXT = {
-    "frame_np": "the phrase introduces an indefinite noun phrase (N1)",
-    "if_outside": "an if-clause after it, outside the phrase",
-    "same_governor": "the phrase and the if-clause modify the same head",
-    "repeated_np": "the if-clause has an indefinite noun phrase with N1's head noun (N2)",
-    "different_mods": "N1 and N2 are both modified, with different modifiers",
+    "outside": {
+        "frame_np": "the phrase introduces an indefinite noun phrase (N1)",
+        "if_outside": "an if-clause after it, outside the phrase",
+        "same_governor": "the phrase and the if-clause modify the same head",
+        "repeated_np": "the if-clause has an indefinite noun phrase with N1's head noun (N2)",
+        "different_mods": "N1 and N2 are both modified, with different modifiers",
+    },
+    "inside": {
+        "frame_np": "the phrase introduces an indefinite noun phrase (N1)",
+        "phrase_in_if": "the phrase is part of an if-clause that starts before it",
+        "repeated_np": "later in the if-clause, outside the phrase, an indefinite noun phrase with N1's head noun (N2)",
+        "different_mods": "N1 and N2 are both modified, with different modifiers",
+    },
 }
 
 LIMITATIONS = """\
-- **Candidates come from the RA's linear queries.** A sentence is only parsed if it matches one of
-  the nine queries; paraphrases outside them ("where an alien …", "in the case of any alien",
-  "in the case of the alien") are not looked at.
+- **Candidates come from the linear queries.** A sentence is only parsed if it matches one of the
+  RA's nine queries or their mirror images ("if" first); paraphrases outside them ("where an
+  alien …", "in the case of any alien", "in the case of the alien") are not looked at.
 - **Westlaw vs. this regex.** Westlaw's own sentence boundaries, plurals and equivalents are not
   reproduced; sentences are this pipeline's segmentation (Stanza plus the statutory re-merge pass,
   with condensed chapeaus as one sentence).
@@ -130,12 +159,13 @@ LIMITATIONS = """\
 """
 
 
-def _funnel(cands: pd.DataFrame, n_sents: int) -> pd.DataFrame:
+def _funnel(cands: pd.DataFrame, n_sents: int, pattern: str) -> pd.DataFrame:
     rows = [("matches a linear query (parsed)", n_sents)]
-    met = pd.Series(True, index=cands.index)
-    for k in depquery.CONDITIONS:
+    conds = depquery.PATTERNS[pattern]
+    met = cands["pattern"] == pattern
+    for k in conds:
         met &= cands[k]
-        label = f"+ {CONDITION_TEXT[k]}" + (" = **match**" if k == depquery.CONDITIONS[-1] else "")
+        label = f"+ {CONDITION_TEXT[pattern][k]}" + (" = **match**" if k == conds[-1] else "")
         rows.append((label, int(cands.loc[met, "sent_id"].nunique())))
     return pd.DataFrame(rows, columns=["sentences with a candidate where …", "sentences"])
 
@@ -144,35 +174,39 @@ def summary_md(stage_counts: dict, cls: pd.DataFrame, cands: pd.DataFrame,
                fails: pd.DataFrame, checks: dict) -> str:
     by_query = pd.DataFrame([
         {"query": f"`{q}`", "parsed sentences": int(cls["queries"].map(lambda qs: qid in qs).sum()),
-         "dependency query matches": int(cls.loc[cls["matches"], "queries"].map(lambda qs: qid in qs).sum()),
-         "matches anchored on this phrase": int(cands.loc[cands["matches"] & (cands["query"] == qid),
-                                                          "sent_id"].nunique())}
-        for qid, q, _ in QUERIES])
+         **{f"matches ({p})": int(cls.loc[cls[f"matches_{p}"], "queries"].map(lambda qs: qid in qs).sum())
+            for p in depquery.PATTERNS}}
+        for qid, q, _ in ALL_QUERIES])
     near = cls[near_misses(cls)]
-    missing = pd.Series({k: int((~near[f"best_{k}"]).sum()) for k in depquery.CONDITIONS},
-                        name="near misses").rename_axis("condition not met").reset_index()
-    by_title = (cls.groupby("title").agg(parsed=("sent_id", "size"), matches=("matches", "sum")))
+    missing = pd.DataFrame([{"pattern": p, "condition not met": k,
+                             "near misses": int(((near["best_pattern"] == p) & ~near[f"best_{k}"]).sum())}
+                            for p, conds in depquery.PATTERNS.items() for k in conds])
+    by_title = (cls.groupby("title").agg(parsed=("sent_id", "size"),
+                                         **{f"matches_{p}": (f"matches_{p}", "sum") for p in depquery.PATTERNS}))
     by_title = by_title.loc[sorted(by_title.index, key=title_sort_key)].reset_index()
     prov = cls[cls["identifier"] == PROVISION]
     out = ["# Sentences shaped like 8 U.S.C. § 1225(b)(2)(A): run summary", ""]
     out += ["## Stage counts", "", md_table(pd.DataFrame(
         list(stage_counts.items()), columns=["stage", "count"])), ""]
-    out += ["## Dependency query, condition by condition", "",
-            "Each row adds one condition; a sentence counts when one (phrase, if) candidate meets "
-            "all conditions so far.", "", md_table(_funnel(cands, len(cls))), ""]
+    for p in depquery.PATTERNS:
+        out += [f"## Dependency query: {PATTERN_TEXT[p]}", "",
+                "Each row adds one condition; a sentence counts when one (phrase, if) candidate of this "
+                "pattern meets all conditions so far.", "", md_table(_funnel(cands, len(cls), p)), ""]
     out += ["## Near misses", "",
-            "Best candidate has the provision's shape (phrase and if-clause modify the same head) "
-            "and meets 4 of the 5 conditions.", "", md_table(missing), ""]
+            "Best candidate meets all but one of its pattern's conditions (for the phrase before the "
+            "if-clause: with the same head).", "", md_table(missing[missing["near misses"] > 0]), ""]
     out += ["## By linear query", "",
-            "A sentence can match several queries; the last column counts matches whose phrase is "
-            "this query's.", "", md_table(by_query), ""]
+            "A sentence can match several queries (`if +s …` ones are the mirror images, not the RA's).",
+            "", md_table(by_query), ""]
     out += ["## By title", "", md_table(by_title[by_title["parsed"] > 0]), ""]
     out += ["## 8 U.S.C. § 1225(b)(2)(A)", ""]
     if prov.empty:
         out += ["**Not found in the classified table.**", ""]
     for r in prov.itertuples():
-        conds = ", ".join(f"{k} {'✓' if getattr(r, f'best_{k}') else '✗'}" for k in depquery.CONDITIONS)
-        out += [f"- `{r.sent_id}`: matches = **{r.matches}** ({conds})", "", f"  > {r.text}", ""]
+        conds = ", ".join(f"{k} {'✓' if getattr(r, f'best_{k}') else '✗'}"
+                          for k in depquery.PATTERNS[r.best_pattern])
+        out += [f"- `{r.sent_id}`: matches = **{r.matches}**, pattern {r.best_pattern} ({conds})", "",
+                f"  > {r.text}", ""]
     out += ["## Parse failures", "", f"{len(fails)} sentences were not parsed.", ""]
     if len(fails):
         out += [md_table(fails[["sent_id", "error"]].head(50)), ""]
@@ -191,7 +225,7 @@ def report_stage(root: Path, plan: dict[str, list[str]], manifest: dict, stage_c
     fails = pd.read_parquet(res / "failures.parquet")
     checks = consistency_checks(root, plan)
     (res / "summary.md").write_text(summary_md(stage_counts, cls, cands, fails, checks))
-    publish(root, {**manifest, "study": "1225b", "queries": QUERIES, "counts": stage_counts,
+    publish(root, {**manifest, "study": "1225b", "queries": ALL_QUERIES, "counts": stage_counts,
                    "checks": checks})
     return checks
 
