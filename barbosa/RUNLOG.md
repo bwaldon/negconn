@@ -85,6 +85,24 @@ order, N2 not itself framed) stay.
   verdict). Off: 132 matches, 88 near misses (3 of the 4 other conditions; best candidate chosen by
   those four, hence one more than the 87 of the c6e163f run).
 
+## Second pattern: the phrase inside the if-clause (user request, 2026-11-09)
+- Candidates: the RA's nine queries plus their mirror images with the *if* first (`study.MIRRORED`,
+  ours). At the unit level the mirrored queries add 1,226 units (2.2 M chars) the RA's queries miss.
+- Pattern `inside` (depquery): an *if* before the phrase whose clause dominates the phrase's head;
+  N2 later in the if-clause, after N1's determiner and outside the phrase's subtree; different
+  modifiers. Same-head does not apply. Candidates of both patterns are kept; a sentence's best
+  candidate prefers a match, then the share of its pattern's conditions met.
+- Re-classifying the existing 1,987 parses first: 45 outside matches (unchanged), 28 inside.
+- Run **1225b2** (call fc-01M70MKPPTW0WF1EJEQFE25MTN, commit 2ff7ef6, `--reuse-run 1225b`):
+  prefilter 11,370,713 chars, 2,656 sections, 59 shards (A10G 40, L40S 19; no L4 free).
+  3,026 matches, **3,021 parsed: 1,987 reused** from run 1225b, **1,034 newly parsed** (206,806
+  tokens); 5 too long (the same five). 1,430 reported GPU-s. Checks all OK; 121 checksums verified
+  → `barbosa/results`. App stopped after the run.
+- Results: **outside 45** (unchanged), **inside 47**, either 91; near misses 46 (outside 22, inside 24).
+  8 U.S.C. § 1225(b)(2)(A) still matches (outside). Inside matches lean on long if-clauses in
+  condensed chapeaus; some are the parser running the if-clause past its items (e.g. 38 U.S.C.
+  § 1712(a)(1)), as with the outside pattern.
+
 ## Dashboard
 - `python -m barbosa.build_dashboard --results barbosa/results --out site/1225b`: 1,987 rows,
   `data/index.js` 2.9 MB, `data/parses-{title}.js` 26.6 MB in total. Published as

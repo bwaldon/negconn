@@ -13,11 +13,13 @@ Which other U.S. Code provisions share this structure?
    different modifier (*an alien seeking admission*),
 
 with the phrase and the *if*-clause modifying the same head, as in the provision (both modify
-*detained*).
+*detained*). A second pattern puts the phrase **inside** the *if*-clause, before the repeated noun
+(*If, … in the case of a State whose legislature meets only biennially, …, the Director determines
+that a State …*).
 
-**Dashboard:** <https://bwaldon.github.io/negconn/1225b/>. Every sentence the RA's linear queries
-find, with its dependency parse. By default the list shows the sentences the dependency query
-matches; it can also show near misses (same head, four of the five conditions) or everything,
+**Dashboard:** <https://bwaldon.github.io/negconn/1225b/>. Every sentence the linear queries find,
+with its dependency parse. By default the list shows the sentences the dependency query matches in
+either pattern (a Pattern menu picks one); it can also show near misses (same head, four of the five conditions) or everything,
 filtered by the condition not met, the linear query, title, unit type or text. A checkbox turns
 the same-head condition off, to see the sentences where the phrase and the *if*-clause attach to
 different heads (matches and near misses are then recomputed in the page). Condensed chapeaus
@@ -34,7 +36,9 @@ becomes a case-insensitive regex over one sentence: the phrase, then *a* or *an*
 *a* or *an*, all whole words (`+s` is "precedes, in the same sentence"; `#` only turns off
 Westlaw's plurals and equivalents). Sentences are the pipeline's own segmentation of the extracted
 statutory text (release point 119-121, condensed chapeaus as one sentence), the same units as the
-negated-connective runs.
+negated-connective runs. For the phrase inside the *if*-clause, the same nine phrases are also
+searched with the *if* first (`if +s (phrase a OR phrase an) +s (a OR an)`; `study.MIRRORED`, ours,
+not the RA's).
 
 **Parse.** Every matching sentence is dependency-parsed with Stanza in Universal Dependencies
 (parser config `electra-dep`: pos `combined_electra-large`, lemma `combined_charlm`, depparse
@@ -63,7 +67,12 @@ For each candidate pair (one occurrence of a query phrase + *a*/*an*, one *if*),
 | `repeated_np` | the *if*-clause contains another noun with N1's lemma whose `det` is *a*/*an* (N2), not itself right after one of the phrases (a parallel "…, and in the case of an X" that the parser folded into the *if*-clause is a new provision, not a repetition) |
 | `different_mods` | N1 and N2 both have modifiers (`amod`, `acl`, `acl:relcl`, `nmod`, `compound`), and the words of N2's modifiers, in sentence order, differ from N1's |
 
-A sentence **matches** when one candidate meets all five. The phrase's head is the lowest word
+A sentence **matches** when one candidate meets all five.
+
+**Phrase inside the *if*-clause.** A candidate with an *if* before the phrase is checked for
+`frame_np`; `phrase_in_if` (the *if*-clause's head dominates the phrase's head); `repeated_np` (N2 in
+the *if*-clause, after the phrase and outside it, i.e. not inside N1's own noun phrase); and
+`different_mods`. The same-head condition does not apply to it. The phrase's head is the lowest word
 dominating both the phrase's first word and N1, so *with respect to an employee* parsed as a fixed
 expression (the phrase's words hanging off *employee*) is handled like *in the case of an alien*.
 8 U.S.C. § 1225(b)(2)(A) itself is the regression case (`tests/test_1225b.py`).
@@ -99,13 +108,12 @@ candidate's conditions), `candidates.parquet` (every candidate), `matches.csv`/`
 
 | | sentences |
 |---|---|
-| found by the RA's queries | 1,992 (1,987 parsed; 5 over 4,000 tokens) |
-| indefinite NP after the phrase, if-clause outside it | 1,854 |
-| … phrase and if-clause modify the same head | 804 |
-| … with N1's noun repeated as an indefinite NP in the if-clause | 68 |
-| **match** (… with different modifiers) | **45** |
-| near misses (all but different modifiers) | 23 |
-| *same-head condition off (dashboard checkbox):* matches / near misses | 132 / 88 |
+| found by the RA's queries and their mirror images | 3,026 (3,021 parsed; 5 over 4,000 tokens) |
+| **phrase before the *if*-clause**: matches (all five conditions) | **45** |
+| … with the same-head condition off (dashboard checkbox) | 132 |
+| **phrase inside the *if*-clause**: matches (all four conditions) | **47** |
+| either pattern | 91 (1 sentence has both) |
+| near misses (all but one condition) | 46 |
 
 8 U.S.C. § 1225(b)(2)(A) matches; so do, e.g., 8 U.S.C. § 1229b(a), 8 U.S.C. § 1151(f)(2)–(3)
 and 18 U.S.C. § 3553(f). *In the case of* accounts for 36 of the matches and *with respect to*
