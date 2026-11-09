@@ -214,8 +214,9 @@ details.conllu tr.r-if td:nth-child(2) { color: var(--accent); font-weight: 600;
 <main>
   <aside>
     <div class="filters">
+      <label class="wide" for="f-pat">Pattern<select id="f-pat"></select></label>
       <label class="wide" for="f-dq">Dependency query<select id="f-dq"></select></label>
-      <label class="wide check" for="f-same"><input id="f-same" type="checkbox" checked>Require that the phrase and the if-clause modify the same head</label>
+      <label class="wide check" for="f-same"><input id="f-same" type="checkbox" checked>Phrase before the if-clause: require that it and the if-clause modify the same head</label>
       <label class="wide" for="f-miss">Condition not met<select id="f-miss"></select></label>
       <label class="wide" for="f-lq">Linear query<select id="f-lq"></select></label>
       <label for="f-title">Title<select id="f-title"><option value="">All titles</option></select></label>
@@ -305,23 +306,24 @@ function bindKeys(step, mark) {
 }
 </script>
 <script>
-/* Data: data/index.js (sentences, the RA's queries each matches, the dependency query's candidates)
+/* Data: data/index.js (sentences, the linear queries each matches, the dependency query's candidates)
    loaded at start, and data/parses-{title}.js (CoNLL-U) loaded when a sentence of that title is
    opened. Word indices are 0-based positions in the CoNLL-U words. */
 const DATASETS = ["1225b"];
 let META = null, ROWS = [];
 const PARSES = {};
-// Each candidate carries all five conditions (META.conditions). Matches, near misses and each
-// sentence's best candidate are worked out here (evaluate), so the same-head condition can be toggled;
-// with it on they agree with the run's own (rows' fields 6–8, not read).
+// Each candidate has a pattern (META.patterns: the phrase before the if-clause, or inside it) and
+// carries all of that pattern's conditions. Matches, near misses and each sentence's best candidate
+// are worked out here (evaluate), so the pattern can be chosen and the same-head condition toggled;
+// with both patterns and same head on they agree with the run's own (rows' fields 6–8, not read).
 const DEP = {
   index(d) {
     META = d;
     ROWS = d.rows.map((r, n) => ({ n, key: r[0], id: r[0], title: r[1], ident: r[2] || "", src: r[3], words: r[4].split(" "),
       queries: r[5], breaks: r[10] || [], conllu: null,
       cands: r[9].map(c => ({ q: c[0], p0: c[1], p1: c[2], det1: c[3], n1: c[4], frame: c[5], gov: c[6], mark: c[7], ifHead: c[8],
-        n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], met: d.conditions.map((_, k) => !!(c[13] & (1 << k))) })) }));
-    SAME = d.conditions.findIndex(([k]) => k === "same_governor");
+        n2: c[9], det2: c[10], mods1: c[11], mods2: c[12], bits: c[13], pat: c[14],
+        met: d.patterns[c[14]][2].map((_, k) => !!(c[13] & (1 << k))) })) }));
   },
   parses(title, map) { PARSES[title] = map; },
 };
@@ -351,40 +353,53 @@ function span(P, i) { if (i < 0) return null; const s = subtree(P, i); return [s
 const KEY = "1225b-review:v1";
 let reviews = loadReviews(KEY);
 function saveReviews() { storeReviews(KEY, reviews); }
-const st = { dq: "match", sameHead: true, miss: "", lq: "", q: "", title: "", src: "", review: "", limit: 300, sel: null, cand: 0, view: "focus" };
+const st = { pat: "", dq: "match", sameHead: true, miss: "", lq: "", q: "", title: "", src: "", review: "", limit: 300, sel: null, cand: 0, view: "focus" };
 const byKey = new Map();
 const findRow = k => byKey.get(k);
 const bestCand = r => r.cands[r.best];
-const phraseLabel = q => `${META.queries[q][2]} a(n) … if … a(n)`;
+const phraseLabel = q => { const [, , ph, src] = META.queries[q];
+  return src === "mirrored" ? `if … ${ph} a(n) … a(n)` : `${ph} a(n) … if … a(n)`; };
+const PATTERN_SHORT = { outside: "phrase before the if-clause", inside: "phrase inside the if-clause" };
 
-/* ---------- matches, with or without the same-head condition ---------- */
-// A match meets every required condition (all five, or the other four when same head is off). A near
-// miss meets all required conditions but one, and has the same head when that is required. The best
-// candidate meets the most required conditions (ties: the longest run in order, then the earliest).
-let SAME = -1;
-const required = i => st.sameHead || i !== SAME;
-const nRequired = () => META.conditions.length - (st.sameHead ? 0 : 1);
-const counted = c => c.met.filter((x, i) => x && required(i)).length;
-function runOf(c) { let k = 0; for (let i = 0; i < c.met.length; i++) { if (!required(i)) continue; if (!c.met[i]) break; k++; } return k; }
+/* ---------- matches, by pattern, with or without the same-head condition ---------- */
+// A candidate matches when it meets its pattern's required conditions (same_governor is required only
+// while the checkbox is on). A near miss meets all but one, with the same head when that is required.
+// The best candidate, among those of the chosen pattern: a match, else the largest share of required
+// conditions met (ties: the longest run in order, the phrase before the if-clause, then the earliest).
+const patName = c => META.patterns[c.pat][0];
+const condsOf = c => META.patterns[c.pat][2];
+const required = (c, i) => st.sameHead || condsOf(c)[i][0] !== "same_governor";
+const needOf = c => condsOf(c).filter((_, i) => required(c, i)).length;
+const counted = c => c.met.filter((x, i) => x && required(c, i)).length;
+const isMatch = c => counted(c) === needOf(c);
+function runOf(c) { let k = 0; for (let i = 0; i < c.met.length; i++) { if (!required(c, i)) continue; if (!c.met[i]) break; k++; } return k; }
+const inPattern = (c, p = st.pat) => !p || patName(c) === p;
 function evaluate() {
-  const need = nRequired(), better = (a, b) => counted(a) - counted(b) || runOf(a) - runOf(b) || b.p0 - a.p0 || b.mark - a.mark;
+  const score = c => [+isMatch(c), counted(c) / needOf(c), runOf(c) / needOf(c), +(patName(c) === "outside"), -c.p0, -c.mark];
+  const better = (a, b) => { const x = score(a), y = score(b); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
   ROWS.forEach(r => {
-    r.best = r.cands.reduce((bi, c, i) => better(c, r.cands[bi]) > 0 ? i : bi, 0);
+    const idx = r.cands.map((_, i) => i).filter(i => inPattern(r.cands[i]));
+    r.best = idx.length ? idx.reduce((bi, i) => better(r.cands[i], r.cands[bi]) > 0 ? i : bi, idx[0]) : -1;
     const c = r.cands[r.best];
-    r.nMet = c ? counted(c) : 0;
-    r.matches = !!c && r.nMet === need;
-    r.near = !!c && !r.matches && r.nMet === need - 1 && (!st.sameHead || c.met[SAME]);
+    r.nMet = c ? counted(c) : 0; r.need = c ? needOf(c) : 0;
+    r.matches = !!c && isMatch(c);
+    const sameAt = c ? condsOf(c).findIndex(([k]) => k === "same_governor") : -1;
+    r.near = !!c && !r.matches && r.nMet === r.need - 1 && (sameAt < 0 || !st.sameHead || c.met[sameAt]);
   });
 }
-function drawDqOptions() {
-  const count = f => ROWS.filter(f).length.toLocaleString(), v = $("f-dq").value || st.dq;
-  $("f-dq").innerHTML = (st.sameHead
-    ? `<option value="match">Matches: all five conditions (${count(r => r.matches)})</option>
-       <option value="near">Near misses: same head, four of five (${count(r => r.near)})</option>`
-    : `<option value="match">Matches: four conditions, same head not required (${count(r => r.matches)})</option>
-       <option value="near">Near misses: three of those four (${count(r => r.near)})</option>`) +
-    `<option value="">Every sentence a linear query found (${ROWS.length.toLocaleString()})</option>`;
-  $("f-dq").value = v;
+function drawOptions() {
+  const count = f => ROWS.filter(f).length.toLocaleString();
+  const matchesIn = p => count(r => r.cands.some(c => inPattern(c, p) && isMatch(c)));
+  const pv = $("f-pat").value || st.pat, dv = $("f-dq").value || st.dq;
+  $("f-pat").innerHTML = `<option value="">Either (${matchesIn("")} matches)</option>` +
+    META.patterns.map(([p, label]) => `<option value="${p}">${esc(label[0].toUpperCase() + label.slice(1))} (${matchesIn(p)})</option>`).join("");
+  $("f-pat").value = pv;
+  const sameNote = st.pat !== "inside" && !st.sameHead ? ", same head not required" : "";
+  $("f-dq").innerHTML = `<option value="match">Matches${sameNote} (${count(r => r.matches)})</option>
+    <option value="near">Near misses: all conditions but one (${count(r => r.near)})</option>
+    <option value="">Every sentence a linear query found (${ROWS.length.toLocaleString()})</option>`;
+  $("f-dq").value = dv;
+  $("f-same").disabled = st.pat === "inside";
 }
 
 /* ---------- header + filters ---------- */
@@ -394,18 +409,23 @@ function setup() {
   const m = META.manifest || {};
   $("runmeta").textContent = m.release_point ? "U.S. Code release " + m.release_point : "";
   evaluate();
-  drawDqOptions();
-  $("f-same").addEventListener("input", e => {
-    st.sameHead = e.target.checked; st.limit = 300;
-    evaluate(); drawDqOptions(); refresh();
+  drawOptions();
+  // Pattern and same head change what counts as a match: re-evaluate, then keep the sentence if still shown.
+  const reevaluate = () => {
+    st.limit = 300; evaluate(); drawOptions(); refresh();
     const r = findRow(st.sel);
     if (r && filtered.includes(r)) { st.cand = Math.max(0, r.best); if (r.conllu) renderDetail(); }
-  });
-  $("f-miss").innerHTML = `<option value="">Any</option>` + META.conditions.map(([k, t], i) => `<option value="${i}">${esc(t)}</option>`).join("");
-  $("f-lq").innerHTML = `<option value="">Any of the nine</option>` + META.queries.map((q, i) => {
-    const n = ROWS.filter(r => r.queries.includes(i)).length;
-    return `<option value="${i}"${n ? "" : " disabled"}>${esc(phraseLabel(i))} (${n})</option>`;
-  }).join("");
+  };
+  $("f-same").addEventListener("input", e => { st.sameHead = e.target.checked; reevaluate(); });
+  $("f-pat").addEventListener("input", e => { st.pat = e.target.value; reevaluate(); });
+  const condNames = []; // every condition once, worded as in the first pattern that has it
+  META.patterns.forEach(([, , cs]) => cs.forEach(([k, t]) => { if (!condNames.some(([k2]) => k2 === k)) condNames.push([k, t]); }));
+  $("f-miss").innerHTML = `<option value="">Any</option>` + condNames.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("");
+  const lqOption = i => { const n = ROWS.filter(r => r.queries.includes(i)).length;
+    return `<option value="${i}"${n ? "" : " disabled"}>${esc(phraseLabel(i))} (${n})</option>`; };
+  const bySource = src => META.queries.map((q, i) => q[3] === src ? lqOption(i) : "").join("");
+  $("f-lq").innerHTML = `<option value="">Any</option><optgroup label="The RA's queries">${bySource("RA")}</optgroup>` +
+    `<optgroup label="Mirrored: if first (for the phrase inside the if-clause)">${bySource("mirrored")}</optgroup>`;
   $("f-title").insertAdjacentHTML("beforeend", titleOptions(new Set(ROWS.map(r => r.title))));
   const srcs = [...new Set(ROWS.map(r => r.src))].sort();
   $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
@@ -414,7 +434,7 @@ function setup() {
   $("clear").addEventListener("click", () => clearFilters(""));
   $("go-prov").addEventListener("click", () => {
     const r = ROWS.find(x => x.ident === META.provision); if (!r) return;
-    if (!matches(r)) clearFilters(r.matches ? "match" : "");
+    if (!matches(r)) { st.pat = ""; $("f-pat").value = ""; evaluate(); drawOptions(); clearFilters(r.matches ? "match" : ""); }
     select(r.key);
   });
 }
@@ -427,7 +447,7 @@ function clearFilters(dq) {
 function matches(r) {
   if (st.dq === "match" && !r.matches) return false;
   if (st.dq === "near" && !r.near) return false;
-  if (st.miss !== "" && (!r.cands.length || bestCand(r).met[+st.miss])) return false;
+  if (st.miss) { const c = bestCand(r), i = c ? condsOf(c).findIndex(([k]) => k === st.miss) : -1; if (i < 0 || c.met[i]) return false; }
   if (st.lq !== "" && !r.queries.includes(+st.lq)) return false;
   if (st.title && r.title !== st.title) return false;
   if (st.src && r.src !== st.src) return false;
@@ -450,7 +470,7 @@ function snippet(r) {
   return merged.map(([a, b]) => r.words.slice(a, b).map((w, k) => { const c2 = role(a + k); return c2 ? `<span style="color:var(--${c2});font-weight:600">${esc(w)}</span>` : esc(w); }).join(" "))
     .join(` <span class="gap">…</span> `);
 }
-function bitsHtml(c) { return `<span class="bits" title="conditions met, in order">${c.met.map(x => `<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
+function bitsHtml(c) { return `<span class="bits" title="${esc(PATTERN_SHORT[patName(c)])}: conditions met, in order">${patName(c) === "inside" ? "◂" : ""}${c.met.map(x => `<span class="${x ? "on" : "off"}">●</span>`).join("")}</span>`; }
 
 let filtered = [];
 function refresh() {
@@ -489,7 +509,8 @@ function roles(P, c) {
   for (let i = c.p0; i <= c.p1; i++) cls[i].add("frame");
   cls[c.det1].add("frame");
   const add = (i, k) => { if (i >= 0) cls[i].add(k); };
-  add(c.n1, "n1"); add(c.det2, "n2"); add(c.n2, "n2"); add(c.mark, "if"); add(c.gov, "gov");
+  add(c.n1, "n1"); add(c.det2, "n2"); add(c.n2, "n2"); add(c.mark, "if");
+  if (patName(c) === "outside") add(c.gov, "gov");
   for (const [a, b] of c.mods1) for (let i = a; i <= b; i++) cls[i].add("m1");
   for (const [a, b] of c.mods2) for (let i = a; i <= b; i++) cls[i].add("m2");
   return { cls, ifSpan: c.ifHead >= 0 ? span(P, c.ifHead) : null };
@@ -497,7 +518,7 @@ function roles(P, c) {
 const q = s => `<q>${esc(s)}</q>`;
 // Why each condition holds or fails for candidate c, keyed by condition.
 function condText(r, P, c) {
-  const met = Object.fromEntries(META.conditions.map(([k], i) => [k, c.met[i]]));
+  const met = Object.fromEntries(condsOf(c).map(([k], i) => [k, c.met[i]]));
   const w = i => i >= 0 ? P.ws[i].form : "";
   const phrase = r.words.slice(c.p0, c.det1 + 1).join(" ");
   const yieldOf = i => { const s = span(P, i); return r.words.slice(s[0], s[1] + 1).join(" "); };
@@ -512,8 +533,11 @@ function condText(r, P, c) {
       : `${q("if")} marks ${q(w(c.ifHead))}, which sits inside the phrase headed by ${q(w(c.frame))}.`,
     same_governor: unchecked || (met.same_governor ? `The phrase (${q(w(c.frame))}, ${P.ws[c.frame].rel}) and the if-clause (${q(w(c.ifHead))}, ${P.ws[c.ifHead].rel}) both modify ${q(w(c.gov))}.`
       : `The phrase (${q(w(c.frame))}) modifies ${c.gov >= 0 ? q(w(c.gov)) : "nothing (it is the root)"}; the if-clause (${q(w(c.ifHead))}) modifies ${P.ws[c.ifHead].head >= 0 ? q(w(P.ws[c.ifHead].head)) : "nothing (it is the root)"}.`),
-    repeated_np: unchecked || (met.repeated_np ? `${q(w(c.det2) + " " + w(c.n2))} (N2) in the if-clause has N1's lemma ${q(P.ws[c.n1].lemma)}.`
-      : `No ${q("a")}/${q("an")} + ${q(P.ws[c.n1].lemma)} in the if-clause.`),
+    phrase_in_if: c.mark < 0 ? `No "if" attached as mark before the phrase.`
+      : met.phrase_in_if ? `${q("if")} marks ${q(w(c.ifHead))}: ${ifq}, which contains the phrase (headed by ${q(w(c.frame))}).`
+      : `${q("if")} marks ${q(w(c.ifHead))}, whose clause does not contain the phrase.`,
+    repeated_np: unchecked || (met.repeated_np ? `${q(w(c.det2) + " " + w(c.n2))} (N2) in the if-clause${patName(c) === "inside" ? ", after the phrase," : ""} has N1's lemma ${q(P.ws[c.n1].lemma)}.`
+      : `No ${q("a")}/${q("an")} + ${q(P.ws[c.n1].lemma)} in the if-clause${patName(c) === "inside" ? " after the phrase and outside it" : ""}.`),
     different_mods: c.n2 < 0 ? "Not checked." : `N1 modifiers: ${modsText(c.mods1)}. N2 modifiers: ${modsText(c.mods2)}.` + (met.different_mods ? "" : c.mods1.length && c.mods2.length ? " The same words." : " One of them has none."),
   };
 }
@@ -521,9 +545,9 @@ function renderDetail() {
   const r = findRow(st.sel); if (!r) return;
   const P = parseConllu(r.conllu), c = r.cands[st.cand];
   const { cls, ifSpan } = roles(P, c);
-  const need = nRequired();
-  const pill = r.matches ? `<span class="pill match">Matches</span>`
-    : r.near ? `<span class="pill near">Near miss · ${r.nMet} of ${need}</span>` : `<span class="pill none">${r.nMet} of ${need}</span>`;
+  const pill = (r.matches ? `<span class="pill match">Matches</span>`
+    : r.near ? `<span class="pill near">Near miss · ${r.nMet} of ${r.need}</span>` : `<span class="pill none">${r.nMet} of ${r.need}</span>`)
+    + (c ? `<span class="pill none">${esc(PATTERN_SHORT[patName(c)])}</span>` : "");
   const lii = liiUrl(r.ident);
   const has = (i, k) => cls[i].has(k);
   const parts = [], gaps = [];
@@ -546,7 +570,8 @@ function renderDetail() {
       <td class="ctx">${ctx(x.p0, x.det1 + 3, [x.det1, x.n1], "conj")}</td>
       <td class="ctx">${x.mark >= 0 ? ctx(x.mark, x.mark + 4, [x.mark], "accent") + ` <span class="hint">word ${x.mark + 1}</span>` : `<span class="no">none</span>`}</td>
       <td class="ctx">${x.n2 >= 0 ? ctx(x.det2 - 1, x.n2 + 3, [x.det2, x.n2], "neg") : `<span class="no">none</span>`}</td>
-      <td>${bitsHtml(x)} ${counted(x)}/${need}</td></tr>`;
+      <td>${esc(PATTERN_SHORT[patName(x)].replace("phrase ", "").replace(" the if-clause", ""))}</td>
+      <td>${bitsHtml(x)} ${counted(x)}/${needOf(x)}</td></tr>`;
   }).join("");
   const rv = reviews[r.key] || {};
   const qs = r.queries.map(i => esc(phraseLabel(i))).join("; ");
@@ -555,12 +580,12 @@ function renderDetail() {
     <div class="meta"><span>${esc(r.src.replace("_", " "))}</span><span>${r.words.length} words</span>
       <span>${r.cands.length} candidate${r.cands.length === 1 ? "" : "s"}</span><span>${esc(r.id)}</span>${lii ? `<a href="${lii}" target="_blank" rel="noopener">Open on LII ↗</a>` : ""}</div>
     <div class="meta"><span>Linear queries: ${qs || "none"}</span></div>
-    <div class="legend"><span class="l-frame">phrase + a/an</span><span class="l-n1">N1</span><span class="l-m1">N1's modifiers</span><span class="l-if">if-clause</span><span class="l-n2">N2</span><span class="l-m2">N2's modifiers</span><span class="l-gov">head both modify</span></div>
+    <div class="legend"><span class="l-frame">phrase + a/an</span><span class="l-n1">N1</span><span class="l-m1">N1's modifiers</span><span class="l-if">if-clause</span><span class="l-n2">N2</span><span class="l-m2">N2's modifiers</span>${c && patName(c) === "outside" ? `<span class="l-gov">head both modify</span>` : ""}</div>
     <div class="text">${textHtml}</div>
-    ${c ? `<div><h3>Conditions${r.cands.length > 1 ? (st.cand === r.best ? " · best candidate" : ` · candidate ${st.cand + 1}`) : ""}</h3><ol class="conds">${META.conditions.map(([k, t], i) =>
-      `<li class="${required(i) ? "" : "off"}"><span class="${c.met[i] ? "ok" : "ko"}" aria-label="${c.met[i] ? "met" : "not met"}">${c.met[i] ? "✓" : "✗"}</span><span class="what">${esc(t)}${required(i) ? "" : " (not required)"}</span><span class="why">${conds[k]}</span></li>`).join("")}</ol></div>` : `<p class="hint">No candidate: none of the phrases is followed by "a"/"an" in the parse's words.</p>`}
+    ${c ? `<div><h3>Conditions${r.cands.length > 1 ? (st.cand === r.best ? " · best candidate" : ` · candidate ${st.cand + 1}`) : ""}</h3><ol class="conds">${condsOf(c).map(([k, t], i) =>
+      `<li class="${required(c, i) ? "" : "off"}"><span class="${c.met[i] ? "ok" : "ko"}" aria-label="${c.met[i] ? "met" : "not met"}">${c.met[i] ? "✓" : "✗"}</span><span class="what">${esc(t)}${required(c, i) ? "" : " (not required)"}</span><span class="why">${conds[k]}</span></li>`).join("")}</ol></div>` : `<p class="hint">No candidate: none of the phrases is followed by "a"/"an" in the parse's words.</p>`}
     ${r.cands.length > 1 ? `<div><h3>Candidates · click one to show it</h3><div class="tablewrap"><table>
-      <thead><tr><th>phrase + N1</th><th>if</th><th>N2</th><th>conditions</th></tr></thead><tbody>${candRows}</tbody></table></div></div>` : ""}
+      <thead><tr><th>phrase + N1</th><th>if</th><th>N2</th><th>phrase</th><th>conditions</th></tr></thead><tbody>${candRows}</tbody></table></div></div>` : ""}
     <div>
       <div class="treebar"><h3>Dependencies</h3>
         <span class="seg"><button type="button" data-v="focus" aria-pressed="${st.view === "focus"}">Phrase to if-clause</button><button type="button" data-v="full" aria-pressed="${st.view === "full"}">Whole sentence</button></span>
@@ -593,8 +618,8 @@ function setMark(m) {
   if (row) { const old = row.querySelector(".rv"); if (old) old.remove(); const v = reviews[r.key].mark; if (v) row.insertAdjacentHTML("beforeend", `<span class="rv">${REVIEW_LABEL[v]}</span>`); }
 }
 function exportCsv() {
-  const lines = [["sent_id", "citation", "identifier", "same_head_required", "matches", "conditions_met", "review", "notes"].join(",")];
-  ROWS.forEach(r => { const v = reviews[r.key]; if (v && (v.mark || v.note)) lines.push([csvCell(r.id), csvCell(citation(r.ident)), csvCell(r.ident), st.sameHead, r.matches, r.nMet, csvCell(v.mark || ""), csvCell(v.note || "")].join(",")); });
+  const lines = [["sent_id", "citation", "identifier", "pattern_filter", "same_head_required", "pattern", "matches", "conditions_met", "review", "notes"].join(",")];
+  ROWS.forEach(r => { const v = reviews[r.key], c = bestCand(r); if (v && (v.mark || v.note)) lines.push([csvCell(r.id), csvCell(citation(r.ident)), csvCell(r.ident), st.pat || "either", st.sameHead, c ? patName(c) : "", r.matches, r.nMet, csvCell(v.mark || ""), csvCell(v.note || "")].join(",")); });
   downloadCsv("1225b_reviews.csv", lines);
 }
 
@@ -604,7 +629,7 @@ function drawDeps(r, P, c, cls, ifSpan) {
   const n = P.ws.length;
   let lo = 0, hi = n - 1;
   if (st.view === "focus" && c) {
-    const pts = [c.p0, c.det1, c.n1, c.gov, c.mark, c.n2, ...(ifSpan || []), ...c.mods1.flat()].filter(i => i >= 0);
+    const pts = [c.p0, c.det1, c.n1, patName(c) === "outside" ? c.gov : -1, c.mark, c.n2, ...(ifSpan || []), ...c.mods1.flat()].filter(i => i >= 0);
     lo = Math.max(0, Math.min(...pts) - 2); hi = Math.min(n - 1, Math.max(...pts) + 2);
   }
   const inWin = i => i >= lo && i <= hi;
