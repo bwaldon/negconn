@@ -9,6 +9,7 @@
 <style>
 /*__DASHBOARD_CSS__*/
 /* not … and/or: red marks negation, indigo the connective, green an if-clause. */
+.row .cite .dist { color: var(--muted); }
 .row .conn { font: 600 11px var(--font-mono); color: var(--conj); border: 1px solid var(--conj); border-radius: 3px; padding: 0 4px; }
 .also { font-size: 12px; color: var(--muted); }
 .also button { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 12px; text-decoration: underline; }
@@ -74,6 +75,13 @@ svg.tree .ifc text { fill: var(--accent); }
       <label for="f-review">My review<select id="f-review">
         <option value="">Any</option><option value="none">Not reviewed</option>
         <option value="yes">Yes (negated connective)</option><option value="no">No</option><option value="unsure">Unsure</option>
+      </select></label>
+      <label class="wide" for="f-sort">Sort by<select id="f-sort">
+        <option value="">Citation</option>
+        <option value="tree">Tree distance, 'not' to the coordination: shortest first</option>
+        <option value="-tree">Tree distance, 'not' to the coordination: longest first</option>
+        <option value="words">Words from 'not' to the connective: fewest first</option>
+        <option value="-words">Words from 'not' to the connective: most first</option>
       </select></label>
       <div class="chips" id="chips" aria-label="Coordination label"></div>
     </div>
@@ -171,7 +179,7 @@ let reviews = loadReviews(KEY, () => {
   return r;
 });
 function saveReviews() { storeReviews(KEY, reviews); }
-const st = { ds: "", clause: "if", q: "", title: "", src: "", review: "", coord: "", limit: 300, sel: null, pair: 0, view: "focus", expandAll: false, open: new Set() };
+const st = { ds: "", clause: "if", q: "", title: "", src: "", review: "", coord: "", sort: "", limit: 300, sel: null, pair: 0, view: "focus", expandAll: false, open: new Set() };
 const byKey = new Map();
 const findRow = k => byKey.get(k);
 
@@ -191,7 +199,7 @@ function setup() {
   const srcs = [...new Set(ROWS.map(r => r.src))].sort();
   $("f-src").insertAdjacentHTML("beforeend", srcs.map(s => `<option value="${esc(s)}">${esc(s.replace("_", " "))}</option>`).join(""));
   $("chips").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; st.coord = st.coord === b.dataset.c ? "" : b.dataset.c; refresh(); });
-  for (const [id, k] of [["f-ds", "ds"], ["f-clause", "clause"], ["f-q", "q"], ["f-title", "title"], ["f-src", "src"], ["f-review", "review"]])
+  for (const [id, k] of [["f-ds", "ds"], ["f-clause", "clause"], ["f-q", "q"], ["f-title", "title"], ["f-src", "src"], ["f-review", "review"], ["f-sort", "sort"]])
     $(id).addEventListener("input", e => { st[k] = e.target.value; st.limit = 300; if (k === "ds") { st.coord = ""; drawChips(); } refresh(); });
   $("clear").addEventListener("click", () => { Object.assign(st, { clause: "", q: "", title: "", src: "", review: "", coord: "", limit: 300 }); $("f-clause").value = "";
     $("f-q").value = ""; $("f-title").value = ""; $("f-src").value = ""; $("f-review").value = ""; refresh(); });
@@ -228,16 +236,28 @@ function snippetFull(r) {
   return p.and - p.not <= 12 && p.and > p.not ? span(p.not - 4, p.and + 5) : span(p.not - 4, p.not + 5) + ` <span class="gap">…</span> ` + span(p.and - 4, p.and + 5);
 }
 
+// Distance for the pair a row shows (keyPair): edges from not to the coordination node ("tree"),
+// or how many words the connective comes after (or before) not ("words").
+function distanceOf(r, kind) { const p = r.pairs[keyPair(r)]; return !p ? Infinity : kind === "tree" ? p.dist : Math.abs(p.and - p.not); }
+function distanceLabel(r) {
+  const kind = st.sort.replace("-", ""), d = distanceOf(r, kind);
+  return kind === "tree" ? `${d} edge${d === 1 ? "" : "s"}` : `${d} word${d === 1 ? "" : "s"} apart`;
+}
+
 let filtered = [];
 function refresh() {
   document.querySelectorAll("#chips .chip").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.c === st.coord)));
   filtered = ROWS.filter(matches);
+  if (st.sort) {  // stable, so citation order breaks ties
+    const kind = st.sort.replace("-", ""), dir = st.sort.startsWith("-") ? -1 : 1;
+    filtered = filtered.map(r => [r, distanceOf(r, kind)]).sort((a, b) => dir * (a[1] - b[1])).map(([r]) => r);
+  }
   $("count").textContent = `${filtered.length.toLocaleString()} sentence${filtered.length === 1 ? "" : "s"}`;
   const shown = filtered.slice(0, st.limit);
   $("list").innerHTML = shown.map(r => {
     const rv = (reviews[r.key] || {}).mark;
     return `<div class="row" role="option" data-id="${esc(r.key)}" aria-selected="${r.key === st.sel}">
-      <div class="cite">${st.ds ? "" : `<span class="conn">${r.ds}</span>`}<span>${esc(citation(r.ident))}</span><span style="color:var(--muted)">${esc(r.src === "chapeau_condensed" ? "chapeau" : r.src)}</span>${rv ? `<span class="rv">${REVIEW_LABEL[rv]}</span>` : ""}</div>
+      <div class="cite">${st.ds ? "" : `<span class="conn">${r.ds}</span>`}<span>${esc(citation(r.ident))}</span><span style="color:var(--muted)">${esc(r.src === "chapeau_condensed" ? "chapeau" : r.src)}</span>${st.sort ? `<span class="dist">${distanceLabel(r)}</span>` : ""}${rv ? `<span class="rv">${REVIEW_LABEL[rv]}</span>` : ""}</div>
       <div class="snip">${snippetFull(r)}</div></div>`;
   }).join("") + (filtered.length > st.limit ? `<button class="more" type="button" id="more">Show ${Math.min(300, filtered.length - st.limit)} more</button>` : "");
   if (!filtered.length) $("list").innerHTML = `<p class="empty" style="padding:20px 16px">No sentences match these filters.</p>`;
@@ -305,7 +325,7 @@ function renderDetail() {
     <div class="legend"><span class="l-neg">not</span><span class="l-vp">VP headed by not (flagged pair)</span><span class="l-conj">${W}</span><span class="l-coord">coordination node</span><span class="l-if">if-clause containing the pair</span></div>
     <div class="text">${textHtml}</div>
     <div><h3>(not, ${W}) pairs · click one to draw it</h3><div class="tablewrap"><table>
-      <thead><tr><th>pair in context</th><th>not's parent</th><th>coordination</th><th>conjuncts</th><th>distance</th><th>flagged</th><th>in if-clause</th></tr></thead>
+      <thead><tr><th>pair in context</th><th>not's parent</th><th>coordination</th><th>conjuncts</th><th>tree distance</th><th>flagged</th><th>in if-clause</th></tr></thead>
       <tbody>${pairRows || `<tr><td colspan="7" class="no">No CC "${W}" in this parse.</td></tr>`}</tbody></table></div></div>
     <div>
       <div class="treebar"><h3>Tree</h3>
